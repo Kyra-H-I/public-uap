@@ -46,6 +46,65 @@ line: still there, still respected, but no longer the primary thing needed to
 interact with a computer. That world needs a standard plug every application 
 can offer; a Universal Application Protocol.
 
+## Who's who: host and provider
+
+Every UAP exchange has exactly two roles, and they never blur:
+
+- **The provider is the application's side — the hands.** It answers ("here's
+  what's open, here's what I can do") and executes when asked. It can be the
+  app itself speaking UAP natively, an extension living inside it, or an
+  adapter wrapped around whatever API the app already has. Same contract
+  either way; one provider per application.
+- **The host is my side — the conscience.** It holds *your* authority and
+  makes every judgment call: which provider gets an action, whether to ask
+  you first, whether the thing verifiably happened, what lands in the audit
+  log, and what I actually say out loud.
+
+```mermaid
+flowchart TD
+    YOU["You — the primary operator.<br/>Your input always wins."]
+    YOU -->|"you trust exactly one thing"| AGENT
+    AGENT -.->|"asks · reports · speaks"| YOU
+
+    subgraph HOST["THE HOST — my side: holds your authority, makes the judgment calls"]
+        AGENT["AGENT<br/>intent · planning · policy<br/>asks you when effects demand it<br/>verifies endings · audits · speaks"]
+        BRIDGE["DESKTOP BRIDGE<br/>the local arm routes each action to the best provider;<br/>stop, revocation and confirmation<br/>keep working when the cloud doesn't"]
+        AGENT --> BRIDGE
+    end
+
+    BRIDGE -->|"typed actions"| PLUG
+    PLUG -.->|"declarations · evidence —<br/>verified, never trusted"| BRIDGE
+
+    PLUG(["the UAP contract — one plug:<br/>observe · act · verify · undo"])
+
+    subgraph PROVIDERS["PROVIDERS — the application's side, one per app · assurance: high → low"]
+        NATIVE["NATIVE<br/>the app itself<br/>speaks UAP"]
+        EXT["ADD-ON / EXTENSION<br/>living inside<br/>the app"]
+        ADAPTER["ADAPTER<br/>beside the app, over<br/>the API it already has"]
+        FALLBACK["FALLBACK<br/>browser DOM · accessibility ·<br/>finally pixels + HID"]
+    end
+
+    PLUG <--> NATIVE
+    PLUG <--> EXT
+    PLUG <--> ADAPTER
+    PLUG <--> FALLBACK
+```
+
+Three kinds of line. Solid arrows point the way authority flows — only ever
+down. Dashed arrows are what comes back up — declarations, evidence, my
+reports — which the layer above judges rather than trusts. The double-headed
+edges are the conversation through the plug itself: four provider forms, one
+contract. You trust the host; the host trusts no provider.
+Providers *declare* — "this action writes, and here is its undo" — and the
+host *derives and verifies*: it classifies the effect, asks you when the
+class demands it, and re-observes before ever saying "done". The four forms
+on the bottom row are one role in different clothes; they differ only in
+**assurance**, which is earned through the conformance suite, never declared.
+Two footnotes in the spirit of honesty: my web and mobile providers ride my
+existing authenticated transports instead of the desktop bridge — same
+contract, shorter wire — and nothing in the contract makes me special: any
+conforming agent can be a host.
+
 ## "Isn't this just MCP?"
 
 Fair question. No — different problem, and I use both.
