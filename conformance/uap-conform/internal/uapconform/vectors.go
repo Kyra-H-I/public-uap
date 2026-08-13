@@ -235,17 +235,44 @@ func vectorObservationReferencesValid(c *ctx) VectorResult {
 }
 
 func vectorAddressableState(c *ctx) VectorResult {
-	hasTargeted := false
+	wanted := map[string]bool{}
 	for _, d := range c.descriptors {
 		if d.Target != "" {
-			hasTargeted = true
+			wanted[d.Target] = true
 		}
 	}
-	if !hasTargeted {
+	if len(wanted) == 0 {
 		return skip("observe.addressable", "no targeted actions")
 	}
 	if len(c.observation.Objects) == 0 {
 		return skip("observe.addressable", "nothing addressable in the current view")
+	}
+
+	// Graded per TARGET CLASS, matching the reference suite. Asking only whether SOMETHING was
+	// addressable is how an editor shipped two actions declaring `target: "focus"` against a
+	// provider publishing only document- and session-lifetime references: the host refused every
+	// call and this vector passed throughout. Go awarded A where Python withheld it, which is the
+	// divergence that matters most — the two runners are supposed to be interchangeable.
+	reachable := map[string]bool{}
+	for _, o := range c.observation.Objects {
+		reachable[o.Ref.Lifetime] = true
+	}
+	for lifetime := range wanted {
+		if basis, ok := c.observation.Epochs[lifetime]; ok && basis != "" {
+			reachable[lifetime] = true
+		}
+	}
+	var unreachable []string
+	for lifetime := range wanted {
+		if !reachable[lifetime] {
+			unreachable = append(unreachable, lifetime)
+		}
+	}
+	if len(unreachable) > 0 {
+		sort.Strings(unreachable)
+		return skip("observe.addressable", fmt.Sprintf(
+			"declares actions targeting %s but published no reference or basis of that lifetime, "+
+				"so the host can never address them", strings.Join(unreachable, ", ")))
 	}
 	return pass("observe.addressable")
 }

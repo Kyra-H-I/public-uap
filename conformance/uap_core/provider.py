@@ -91,3 +91,16 @@ class UapProvider(Protocol):
     def events(self) -> AsyncIterator[ProviderEvent]:
         """Ordered lifecycle events. Sequence gaps are the host's cue to re-observe."""
         ...
+
+
+class ProviderUnreachable(Exception):
+    """The provider could not be reached, so the host has no view of it at all.
+
+    Distinct from "the application is empty", and the distinction is the whole reason this
+    exists. `observe` returns an `Observation`, so a transport timeout had nowhere to go but an
+    empty one — after which the host said "nothing is open in VS Code on that machine" about a
+    machine it had failed to contact, and cached the empty epochs, invalidating every reference
+    the session already held. `invoke` on the same transport already gets this right: it reports
+    a timeout as FAILED rather than REJECTED, precisely so a lost message is never spoken as
+    "it didn't go through".
+    """

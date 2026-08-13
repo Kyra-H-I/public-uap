@@ -49,4 +49,9 @@ jobs:
         run: pip install ./conformance
       - name: Wire runner grades the minimal example over stdio
         working-directory: examples/minimal
-        run: "$RUNNER_TEMP/uap-conform" -cmd "python stdio_harness.py"
+        # Single-quoted, so the double quotes inside are ordinary characters. Written bare, the
+        # value started with a double quote and YAML read it as a quoted scalar that then had
+        # trailing content — a parse error that rejects the WHOLE file, so neither job in it ran
+        # and the "kept green by CI" guarantee this workflow exists to provide was never once
+        # exercised.
+        run: '"$RUNNER_TEMP/uap-conform" -cmd "python stdio_harness.py"'

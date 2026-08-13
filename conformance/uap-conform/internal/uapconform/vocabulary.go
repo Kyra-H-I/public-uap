@@ -268,6 +268,28 @@ var knownReversibility = map[string]bool{
 	ReversibilityOperationUndo: true,
 }
 
+// Vocabularies the GRADER must know even though it never mints them: it reads them off the wire
+// while judging semantics, and a word it does not recognise is a verdict it cannot reach. Absent
+// here, all three had already drifted from the host — which the parity gate could not see, because
+// it did not check them.
+const (
+	// DeniedScope on a permission_denied result: whether the refusal was about this target or the
+	// whole capability. The host treats the second as a mid-session capability loss.
+	DeniedScopeTarget     = "target"
+	DeniedScopeCapability = "capability"
+
+	// ManifestScope: a bound session's manifest, or the pre-auth catalog a deployment publishes.
+	ManifestScopeSession = "session"
+	ManifestScopePublic  = "public"
+
+	// ProviderOrigin — provenance, never an assurance level. The host derives assurance from it
+	// and a manifest may only make the answer more conservative.
+	OriginNative        = "native"
+	OriginAdapter       = "adapter"
+	OriginAccessibility = "accessibility"
+	OriginVisionHID     = "vision_hid"
+)
+
 var knownLifetimes = map[string]bool{
 	LifetimeView:       true,
 	LifetimeFocus:      true,

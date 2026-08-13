@@ -101,20 +101,27 @@ func run() int {
 	fmt.Println(string(out))
 
 	failures := report.Failures()
+	unproven := report.Unproven()
 	fmt.Fprintf(os.Stderr, "uap-conform: %s — %d passed, %d failed, %d skipped\n",
-		verdict(len(failures) == 0), len(report.Results)-len(failures)-len(report.Skipped()),
+		verdict(report.EarnsControlReady), len(report.Results)-len(failures)-len(report.Skipped()),
 		len(failures), len(report.Skipped()))
 	for _, f := range failures {
 		fmt.Fprintf(os.Stderr, "  FAIL %s: %s\n", f.ID, f.Detail)
 	}
-	if len(failures) > 0 {
+	// A core vector that graded nothing is reported as loudly as a failure and is equally
+	// disqualifying. Printing only failures is how a run that examined NOTHING — a provider with
+	// no capability and nothing addressable — announced PASSED and exited 0.
+	for _, s := range unproven {
+		fmt.Fprintf(os.Stderr, "  UNPROVEN %s: %s\n", s.ID, s.Detail)
+	}
+	if len(failures) > 0 || len(unproven) > 0 {
 		return 1
 	}
 	return 0
 }
 
-func verdict(passed bool) string {
-	if passed {
+func verdict(earned bool) string {
+	if earned {
 		return "PASSED"
 	}
 	return "FAILED"

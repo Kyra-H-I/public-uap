@@ -1,7 +1,12 @@
 """Run the core conformance suite against the minimal example provider.
 
 Usage: pip install ../../conformance && python run_conformance.py
-Exit code 0 when every vector passes; failures print their ids and details.
+
+Exit code 0 when the run EARNS Control-Ready: nothing failed, and no core vector went
+ungraded. A skip is not a pass — a provider that offers nothing addressable can be probed by
+nothing at all, and verdicting on "did anything fail" handed such a run a clean exit.
+Skips of the optional-feature vectors (preview, cancellation, an undo never claimed) are
+honest absences and do not disqualify.
 """
 
 import asyncio
@@ -23,8 +28,11 @@ def main() -> int:
         if result.detail:
             line += f" — {result.detail}"
         print(line)
-    print(f"{'PASS' if report.passed else 'FAIL'}: {report.provider}")
-    return 0 if report.passed else 1
+    for result in report.unproven:
+        print(f"UNPROVEN {result.id} — {result.detail}")
+    earned = report.earns_control_ready
+    print(f"{'PASS' if earned else 'FAIL'}: {report.provider}")
+    return 0 if earned else 1
 
 
 if __name__ == "__main__":

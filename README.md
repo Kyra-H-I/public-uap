@@ -104,8 +104,9 @@ python examples/minimal/run_conformance.py   # 14 vectors: 13 pass, 1 skip → e
 ## Status
 
 `1.0-draft`, honestly labelled.  
-This is not a paper protocol: the core contract runs daily against my own web, 
-mobile, and desktop-editor providers behind one conformance suite. 
+This is not a paper protocol: the core contract is implemented by my own web, 
+mobile, and desktop-editor providers, and CI runs the conformance suite against 
+them on every change to the protocol or any of those providers. 
 The query algebra and plan envelopes ship as frozen interchange schema *ahead* 
 of their execution semantics, so independent implementations can't fork the grammar. 
 Expect breaking changes until the label drops;  

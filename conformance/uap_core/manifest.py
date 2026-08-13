@@ -36,6 +36,28 @@ from uap_core.references import ReferenceLifetime
 #: envelopes change shape; domain capabilities version independently.
 UAP_VERSION = "1.0-draft"
 
+
+def protocol_major(version: str) -> str:
+    """The major of a declared core version, or ``""`` when there is nothing to read."""
+    return version.split(".", 1)[0].strip()
+
+
+def protocol_compatible(declared: str) -> bool:
+    """Whether a client's declared core version may be bound at all.
+
+    The draft's stated compatibility backstop (spec: "hosts fail closed on a major
+    mismatch"), and the reason a breaking draft change is considered survivable at all: a
+    client on another major is not slightly wrong, it is speaking a different protocol, and
+    interpreting its envelopes with these semantics is exactly the silent misreading the
+    version field exists to prevent.
+
+    An **absent** version is incompatible too. It used to read as "the host's own version",
+    which made the one field the backstop rests on fail open — the vocabulary lists ``uap``
+    as always present, so silence is a malformed manifest, not consent to be assumed current.
+    """
+    return bool(declared) and protocol_major(declared) == protocol_major(UAP_VERSION)
+
+
 _ACTION_RE = re.compile(r"^[a-z][a-z0-9_]{0,31}(\.[a-z][a-z0-9_]{0,31}){1,3}$")
 _ID_RE = re.compile(r"^[a-z][a-z0-9_]{0,31}(\.[a-z][a-z0-9_]{0,31}){0,3}$")
 #: Reverse-DNS provider id (``org.example.editor``). Bounded because it is logged on
@@ -58,6 +80,16 @@ def is_valid_provider_id(value: str) -> bool:
 #: can reach model context, so it is capped rather than trusted to be sensible.
 MAX_CAPABILITIES = 64
 MAX_ACTIONS_PER_CAPABILITY = 32
+#: The application label is rendered verbatim into every ``look_at_app`` result, so it is
+#: bounded like every other provider-authored string here (``platform`` 32, ``title`` 80).
+#: Uncapped it was ~128k tokens of attacker-chosen prose per look, billed to the user.
+MAX_APPLICATION_CHARS = 120
+#: Per-descriptor collection bounds. A descriptor is provider-authored input that lands in
+#: model context whole, so "bounded, always" has to hold per COUNT as well as per value —
+#: 5 000 one-line arguments render to ~99k characters without breaking any single cap.
+MAX_ACTION_ARGUMENTS = 32
+MAX_PRECONDITIONS = 16
+MAX_EFFECTS = 16
 #: Upper bound on a *declared* (not listed) action count. Deliberately far above
 #: MAX_ACTIONS_PER_CAPABILITY — that cap bounds what a manifest may inline, and
 #: declaring a large group is the sanctioned way past it. This bound only rejects
@@ -183,11 +215,11 @@ class ProviderFeatures:
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> ProviderFeatures:
         return cls(
-            events=bool(d.get("events", False)),
-            preview=bool(d.get("preview", False)),
-            transactions=bool(d.get("transactions", False)),
-            cancellation=bool(d.get("cancellation", False)),
-            capability_query=bool(d.get("capability_query", False)),
+            events=_flag(d.get("events")),
+            preview=_flag(d.get("preview")),
+            transactions=_flag(d.get("transactions")),
+            cancellation=_flag(d.get("cancellation")),
+            capability_query=_flag(d.get("capability_query")),
         )
 
 
@@ -243,6 +275,15 @@ class ActionDescriptor:
     def __post_init__(self) -> None:
         if not _ACTION_RE.match(self.name):
             raise ValueError(f"invalid action name: {self.name!r}")
+        # Bounded by COUNT as well as by value. Every string in a descriptor is already capped,
+        # but a descriptor lands in model context whole, and 5 000 individually-legal one-line
+        # arguments render to ~99k characters without breaking a single per-value cap.
+        if len(self.arguments) > MAX_ACTION_ARGUMENTS:
+            raise ValueError(f"action {self.name} declares too many arguments")
+        if len(self.preconditions) > MAX_PRECONDITIONS:
+            raise ValueError(f"action {self.name} declares too many preconditions")
+        if len(self.effects) > MAX_EFFECTS:
+            raise ValueError(f"action {self.name} declares too many effects")
 
     def to_dict(self) -> dict[str, Any]:
         d: dict[str, Any] = {
@@ -285,8 +326,21 @@ class ActionDescriptor:
             summary=str(d.get("summary", ""))[:200],
             effects=tuple(Effect.from_dict(e) for e in _as_list(d.get("effects"))),
             target=target,
-            arguments={str(k): str(v)[:80] for k, v in _as_mapping(d.get("arguments")).items()},
-            preconditions=tuple(str(p)[:120] for p in _as_list(d.get("preconditions"))),
+            # Descriptive prose, so an over-long list is trimmed the way every over-long string
+            # here is. `effects` above is deliberately NOT trimmed: dropping one would make the
+            # action read as less reaching than it is, and the confirmation class is derived from
+            # exactly that list — a silent trim there buys a lower policy class. Over-declaring
+            # effects is a caller's own problem; under-declaring is the user's.
+            arguments=dict(
+                list(
+                    {
+                        str(k): str(v)[:80] for k, v in _as_mapping(d.get("arguments")).items()
+                    }.items()
+                )[:MAX_ACTION_ARGUMENTS]
+            ),
+            preconditions=tuple(str(p)[:120] for p in _as_list(d.get("preconditions")))[
+                :MAX_PRECONDITIONS
+            ],
             verification=str(d.get("verification", ""))[:200],
             idempotent=bool(d.get("idempotent", False)),
             undo_of=_opt_action(d.get("undo_of")),
@@ -394,6 +448,11 @@ class ProviderManifest:
             raise ValueError(f"invalid provider id: {self.provider!r}")
         if len(self.capabilities) > MAX_CAPABILITIES:
             raise ValueError(f"provider {self.provider} declares too many capabilities")
+        # The application label is provider-authored prose that reaches model context verbatim in
+        # every `look_at_app` result, and it was the one string here with no cap at all: 200k
+        # characters of attacker-chosen text were accepted and billed to the user, per look.
+        if len(self.application) > MAX_APPLICATION_CHARS:
+            raise ValueError(f"provider {self.provider} declares an over-long application")
 
     @property
     def action_names(self) -> frozenset[str]:
@@ -470,13 +529,25 @@ class ProviderManifest:
         return cls(
             provider=str(d.get("provider", "")),
             origin=origin,
-            application=str(d.get("application", "")),
+            application=str(d.get("application", ""))[:MAX_APPLICATION_CHARS],
             uap=str(d.get("uap", UAP_VERSION)),
             capabilities=caps,
             features=ProviderFeatures.from_dict(_as_mapping(d.get("features"))),
             platform=str(d.get("platform", ""))[:32],
             scope=scope,
         )
+
+
+def _flag(value: Any) -> bool:
+    """Read a declared feature flag: only a real ``true`` declares anything.
+
+    ``bool()`` was the trap. ``bool("false")`` is ``True``, so ``"preview": "false"`` — one
+    plausible client typo, or one deliberate line in a hostile manifest — DECLARED preview,
+    and a declared preview is what lets a model-set ``dry_run`` lower an action's confirmation
+    class. Everything that is not the boolean ``true`` reads as absent, which is the direction
+    the spec mandates: the cost of getting this wrong must be a needless confirmation.
+    """
+    return value is True
 
 
 def _opt_count(value: Any) -> int | None:

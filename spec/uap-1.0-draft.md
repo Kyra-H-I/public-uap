@@ -540,9 +540,12 @@ host product.
 
 ## Governance, licensing, versioning
 
-Published with an irrevocable open license and patent grant from this first
-draft: specification documents CC-BY-4.0; schemas, vectors, examples, skill,
-and conformance tooling Apache-2.0. Adopting UAP carries no dependence on the
+Published with an irrevocable open license from this first draft:
+specification documents CC-BY-4.0; schemas, vectors, examples, skill, and
+conformance tooling Apache-2.0 — which carries an express patent grant. Note
+that CC-BY-4.0 does **not** license patent rights, so the specification prose
+carries no patent grant; the normative artefacts an implementer actually builds
+against (schemas, vectors, conformance tooling) do, under Apache-2.0. Adopting UAP carries no dependence on the
 publisher's continued goodwill. No foundation or standards-body donation until
 at least two independent hosts implement the protocol; a lightweight neutral
 steering group forms if real adopters appear.
@@ -552,6 +555,27 @@ on a major mismatch. Domain capabilities version independently of core.
 Vocabulary is closed per version: implementations must not invent codes or
 statuses (hosts parse unknown vocabulary fail-closed, to the strictest
 reading).
+
+**Forward compatibility, and how a minor adds a field.** The published schemas
+close every object, and a conforming decoder ignores fields it does not know —
+two rules that contradict each other the moment a v1.1 field appears on the
+wire, because a strict validator rejects the call while a lenient host executes
+a different command than the sender wrote. The resolution is one namespace:
+
+- A field a future version adds, or a vendor adds, MUST be named `x-<name>`
+  (lowercase, hyphen-separated). The schemas admit `x-` fields on every object
+  via `patternProperties`; they still reject any other unknown field, so a
+  misspelling — the common case — is caught rather than silently ignored.
+- A peer MUST ignore an `x-` field it does not understand, and MUST NOT treat
+  its presence as a version signal. Anything load-bearing belongs in a major.
+- A minor version is therefore additive by construction, and needs no
+  negotiation: `manifest.uap` continues to carry `major.minor`, hosts compare
+  only the major, and a peer discovers what a newer minor offers through
+  `features` and capability discovery rather than through the version string.
+
+Until this draft's label drops, the version string itself may move without a
+major bump; treat `1.0-draft` as unstable and re-read this section on each
+change.
 
 ## Status of this draft
 
