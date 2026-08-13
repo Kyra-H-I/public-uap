@@ -1,0 +1,347 @@
+{
+  "$comment": "GENERATED from the reference implementation's real serializers. These are complete NDJSON objects; write one compact JSON object per line on a wire.",
+  "uap": "1.0-draft",
+  "encoding": "UTF-8 newline-delimited JSON; one object per line",
+  "argument_counting": {
+    "unit": "unicode_scalar_value",
+    "definition": "compact JSON, with no insignificant whitespace",
+    "non_bmp_probe": {
+      "arguments": {
+        "glyph": "\ud83d\ude00"
+      },
+      "compact_json": "{\"glyph\":\"\ud83d\ude00\"}",
+      "encoded_chars": 13,
+      "utf16_code_units": 14
+    }
+  },
+  "exchanges": [
+    {
+      "id": "describe",
+      "request": {
+        "type": "uap.describe_request",
+        "id": "req-describe"
+      },
+      "response": {
+        "type": "uap.describe_result",
+        "id": "req-describe",
+        "uap": "1.0-draft",
+        "provider": "com.example.notes",
+        "origin": "native",
+        "application": "example.notes",
+        "platform": "desktop",
+        "scope": "session",
+        "capabilities": [
+          {
+            "id": "notes.editing",
+            "title": "Note editing",
+            "actions": [
+              "note.append"
+            ]
+          }
+        ],
+        "features": {
+          "events": true,
+          "preview": true,
+          "transactions": false,
+          "cancellation": true,
+          "capability_query": false
+        }
+      }
+    },
+    {
+      "id": "capability",
+      "request": {
+        "type": "uap.capability_request",
+        "id": "req-capability",
+        "capability": "notes.editing"
+      },
+      "response": {
+        "type": "uap.capability_result",
+        "id": "req-capability",
+        "actions": [
+          {
+            "name": "note.append",
+            "summary": "Append text to the addressed note.",
+            "effects": [
+              {
+                "kind": "persist",
+                "scope": "the addressed note",
+                "reversibility": "operation_undo"
+              }
+            ],
+            "arguments": {
+              "text": "string",
+              "tags": "array<string>",
+              "notify": "boolean"
+            },
+            "preconditions": [
+              "the note still exists"
+            ],
+            "verification": "re-read the note revision",
+            "idempotent": true,
+            "target": "document"
+          }
+        ]
+      }
+    },
+    {
+      "id": "observe",
+      "request": {
+        "type": "uap.observe_request",
+        "id": "req-observe",
+        "scopes": [
+          "view",
+          "document"
+        ],
+        "limit": 10,
+        "ref": {
+          "kind": "note.document",
+          "id": "launch-plan",
+          "lifetime": "document",
+          "basis": "rev-7"
+        }
+      },
+      "response": {
+        "type": "uap.observe_result",
+        "id": "req-observe",
+        "provider": "com.example.notes",
+        "epochs": {
+          "document": "rev-7",
+          "session": "session-3"
+        },
+        "view_key": "notes/editor",
+        "view_title": "Launch plan",
+        "focus_kind": "editor",
+        "objects": [
+          {
+            "ref": {
+              "kind": "note.document",
+              "id": "launch-plan",
+              "lifetime": "document",
+              "basis": "rev-7"
+            },
+            "type": "note.document",
+            "title": "Launch plan",
+            "properties": {
+              "revision": "rev-7",
+              "dirty": "false"
+            },
+            "actions": [
+              "note.append"
+            ]
+          }
+        ],
+        "omitted": 0
+      }
+    },
+    {
+      "id": "invoke",
+      "request": {
+        "type": "uap.invoke_request",
+        "id": "req-invoke",
+        "action": "note.append",
+        "command_id": "cmd-append-8",
+        "arguments": {
+          "text": "Ship readiness summary.",
+          "tags": [
+            "launch",
+            "approved"
+          ],
+          "notify": false,
+          "position": {
+            "line": 4,
+            "column": 0
+          }
+        },
+        "dry_run": false,
+        "provider": "com.example.notes",
+        "ref": {
+          "kind": "note.document",
+          "id": "launch-plan",
+          "lifetime": "document",
+          "basis": "rev-7"
+        },
+        "expect_revision": "rev-7"
+      },
+      "response": {
+        "type": "uap.invoke_result",
+        "id": "req-invoke",
+        "command_id": "cmd-append-8",
+        "status": "completed",
+        "detail": "appended the text",
+        "data": {
+          "inserted_chars": 23,
+          "tags": [
+            "launch",
+            "approved"
+          ]
+        },
+        "ref": {
+          "kind": "note.document",
+          "id": "launch-plan",
+          "lifetime": "document",
+          "basis": "rev-8"
+        },
+        "revision_before": "rev-7",
+        "revision_after": "rev-8",
+        "undo_token": "undo-cmd-append-8"
+      }
+    },
+    {
+      "id": "verify",
+      "request": {
+        "type": "uap.verify_request",
+        "id": "req-verify",
+        "properties": {
+          "dirty": "false"
+        },
+        "ref": {
+          "kind": "note.document",
+          "id": "launch-plan",
+          "lifetime": "document",
+          "basis": "rev-8"
+        },
+        "revision": "rev-8"
+      },
+      "response": {
+        "type": "uap.verify_result",
+        "id": "req-verify",
+        "verified": true,
+        "detail": "revision and properties match",
+        "observation": {
+          "provider": "com.example.notes",
+          "epochs": {
+            "document": "rev-8"
+          },
+          "view_key": null,
+          "view_title": null,
+          "focus_kind": null,
+          "objects": [],
+          "omitted": 0
+        }
+      }
+    },
+    {
+      "id": "cancel",
+      "request": {
+        "type": "uap.cancel_request",
+        "id": "req-cancel",
+        "command_id": "cmd-append-8"
+      },
+      "response": {
+        "type": "uap.cancel_result",
+        "id": "req-cancel",
+        "command_id": "cmd-append-8",
+        "state": "too_late",
+        "detail": "the command already completed; nothing was undone"
+      }
+    }
+  ],
+  "refusals": [
+    {
+      "id": "invoke-invalid-arguments",
+      "request": {
+        "type": "uap.invoke_request",
+        "id": "req-invoke-invalid-arguments",
+        "action": "note.append",
+        "command_id": "cmd-malformed-1",
+        "arguments": [],
+        "dry_run": false
+      },
+      "response": {
+        "type": "uap.invoke_result",
+        "id": "req-invoke-invalid-arguments",
+        "command_id": "cmd-malformed-1",
+        "status": "rejected",
+        "detail": "the action call needs repair",
+        "error": {
+          "code": "invalid_call",
+          "message": "the action call does not match the wire contract",
+          "field_path": "/arguments",
+          "expected": {
+            "kind": "type",
+            "type": "object"
+          },
+          "got": "array"
+        }
+      }
+    },
+    {
+      "id": "invoke-invalid-dry-run",
+      "request": {
+        "type": "uap.invoke_request",
+        "id": "req-invoke-invalid-dry-run",
+        "action": "note.append",
+        "command_id": "cmd-malformed-2",
+        "arguments": {},
+        "dry_run": "false"
+      },
+      "response": {
+        "type": "uap.invoke_result",
+        "id": "req-invoke-invalid-dry-run",
+        "command_id": "cmd-malformed-2",
+        "status": "rejected",
+        "detail": "the action call needs repair",
+        "error": {
+          "code": "invalid_call",
+          "message": "the action call does not match the wire contract",
+          "field_path": "/dry_run",
+          "expected": {
+            "kind": "type",
+            "type": "boolean"
+          },
+          "got": "string"
+        }
+      }
+    },
+    {
+      "id": "invoke-invalid-reference",
+      "request": {
+        "type": "uap.invoke_request",
+        "id": "req-invoke-invalid-reference",
+        "action": "note.append",
+        "command_id": "cmd-malformed-3",
+        "arguments": {},
+        "ref": {
+          "kind": "note.document",
+          "id": "launch-plan",
+          "lifetime": "document"
+        }
+      },
+      "response": {
+        "type": "uap.invoke_result",
+        "id": "req-invoke-invalid-reference",
+        "command_id": "cmd-malformed-3",
+        "status": "rejected",
+        "detail": "the action call needs repair",
+        "error": {
+          "code": "invalid_call",
+          "message": "the action call does not match the wire contract",
+          "field_path": "/ref/basis",
+          "expected": {
+            "kind": "type",
+            "type": "string"
+          },
+          "got": "missing"
+        }
+      }
+    }
+  ],
+  "events": [
+    {
+      "type": "uap.event",
+      "provider": "com.example.notes",
+      "event": "document.changed",
+      "seq": 8,
+      "ref": {
+        "kind": "note.document",
+        "id": "launch-plan",
+        "lifetime": "document",
+        "basis": "rev-8"
+      },
+      "epochs": {
+        "document": "rev-8"
+      }
+    }
+  ]
+}

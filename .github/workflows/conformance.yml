@@ -1,0 +1,52 @@
+# The public repository's own gate: the example that cannot rot. Every push runs
+# the minimal provider through the core conformance suite and builds the wire
+# runner, so "green" always means the shipped artifacts still agree with each
+# other. (This file is exported from the reference repository's staging tree.)
+name: conformance
+
+on:
+  push:
+  pull_request:
+
+# Read-only by default: this repository accepts pull requests from forks, and a
+# workflow that needs no write scope should not be handed one.
+permissions:
+  contents: read
+
+jobs:
+  suite:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install the conformance package
+        run: pip install ./conformance
+      - name: Minimal example passes the core suite
+        run: python examples/minimal/run_conformance.py
+
+  wire-runner:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Vet, test, and build uap-conform
+        working-directory: conformance/uap-conform
+        run: |
+          go vet ./...
+          go test ./...
+          go build -o "$RUNNER_TEMP/uap-conform" ./cmd/uap-conform
+      # The wire path gets the same "cannot rot" guarantee as the in-process one.
+      # Building the runner only proves it compiles; grading the shipped example
+      # through it proves the two halves of the bundle still agree over NDJSON.
+      - name: Install the conformance package
+        run: pip install ./conformance
+      - name: Wire runner grades the minimal example over stdio
+        working-directory: examples/minimal
+        run: "$RUNNER_TEMP/uap-conform" -cmd "python stdio_harness.py"

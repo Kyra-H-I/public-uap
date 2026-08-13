@@ -1,0 +1,509 @@
+{
+  "$comment": "GENERATED from the reference implementation - do not hand-edit; cross-language parity gates hold every client copy to these values.",
+  "uap": "1.0-draft",
+  "vocabulary": {
+    "error_codes": [
+      "stale_reference",
+      "unknown_reference",
+      "unsupported",
+      "ambiguous",
+      "precondition_failed",
+      "invalid_call",
+      "invalid_argument",
+      "permission_denied",
+      "confirmation_required",
+      "conflict",
+      "cancelled",
+      "timeout",
+      "unavailable",
+      "internal"
+    ],
+    "action_statuses": [
+      "accepted",
+      "completed",
+      "previewed",
+      "rejected",
+      "failed",
+      "cancelled"
+    ],
+    "effect_kinds": [
+      "read",
+      "view",
+      "draft",
+      "persist",
+      "device",
+      "external"
+    ],
+    "reversibility": [
+      "none",
+      "checkpoint",
+      "operation_undo"
+    ],
+    "action_terminality": [
+      "observable",
+      "handoff"
+    ],
+    "reference_lifetimes": [
+      "view",
+      "focus",
+      "document",
+      "session",
+      "persistent"
+    ],
+    "observation_scopes": [
+      "view",
+      "focus",
+      "selection",
+      "document",
+      "objects"
+    ],
+    "provider_origins": [
+      "native",
+      "adapter",
+      "accessibility",
+      "vision_hid"
+    ],
+    "assurance_levels": [
+      "A",
+      "B",
+      "C",
+      "D"
+    ],
+    "manifest_scopes": [
+      "session",
+      "public"
+    ],
+    "denied_scopes": [
+      "target",
+      "capability"
+    ],
+    "cancel_states": [
+      "stopped",
+      "too_late",
+      "unsupported"
+    ],
+    "invalid_call_expected_kinds": [
+      "type",
+      "enum",
+      "range"
+    ],
+    "predicate_operators": [
+      "predicate",
+      "and",
+      "or",
+      "not"
+    ],
+    "comparison_operators": [
+      "eq",
+      "ne",
+      "lt",
+      "lte",
+      "gt",
+      "gte"
+    ],
+    "core_predicates": [
+      "ref.eq",
+      "type.is",
+      "rel.of",
+      "prop.cmp",
+      "text.range",
+      "text.contains",
+      "view.visible",
+      "symbol.matches"
+    ],
+    "query_directions": [
+      "asc",
+      "desc"
+    ],
+    "plan_failure_modes": [
+      "stop",
+      "skip_if_guard_failed"
+    ],
+    "plan_status_kinds": [
+      "completed",
+      "stopped_at",
+      "cancelled"
+    ],
+    "plan_step_states": [
+      "ran",
+      "skipped",
+      "not_run"
+    ],
+    "plan_rollback_states": [
+      "reverted",
+      "failed",
+      "not_run"
+    ]
+  },
+  "error_semantics": {
+    "$comment": "How a host reacts to each code. Codes in neither set (ambiguous) are clarify signals: only the user can resolve them.",
+    "reobservable": [
+      "conflict",
+      "stale_reference",
+      "unknown_reference"
+    ],
+    "retryable_after_reobserve": [
+      "stale_reference",
+      "unknown_reference"
+    ],
+    "repairable_once": [
+      "invalid_call"
+    ],
+    "terminal": [
+      "cancelled",
+      "confirmation_required",
+      "invalid_argument",
+      "permission_denied",
+      "unsupported"
+    ]
+  },
+  "message_types": {
+    "$comment": "The out-of-process wire dialect. A request travels as {\"type\": <request type>, \"id\": <unique id>, ...body} and its reply echoes the same \"id\". Events arrive under the event type with the semantic kind in the \"event\" field.",
+    "topic": {
+      "$comment": "Binding parameter \u2014 value defined by the implementor, none fixed here. A binding that multiplexes UAP onto a shared channel MUST route every UAP frame under one dedicated topic (the reference host uses a value inside its own namespace); a dedicated channel, such as the NDJSON stdio/socket binding the wire runner grades, needs no topic at all.",
+      "value": "implementation-defined"
+    },
+    "requests": [
+      "uap.describe_request",
+      "uap.capability_request",
+      "uap.observe_request",
+      "uap.invoke_request",
+      "uap.verify_request",
+      "uap.cancel_request"
+    ],
+    "responses": {
+      "uap.describe_request": "uap.describe_result",
+      "uap.capability_request": "uap.capability_result",
+      "uap.observe_request": "uap.observe_result",
+      "uap.invoke_request": "uap.invoke_result",
+      "uap.verify_request": "uap.verify_result",
+      "uap.cancel_request": "uap.cancel_result"
+    },
+    "event": "uap.event"
+  },
+  "status_semantics": {
+    "accepted": {
+      "terminal": false,
+      "command_lifecycle": "not_implemented",
+      "read_or_view": "may_remain_nonterminal",
+      "durable_audit_required_mutation": {
+        "provider_acceptance": "recorded",
+        "returned_status": "failed",
+        "returned_error": "timeout",
+        "terminal_ambiguous_outcome": "recorded",
+        "automatic_retry": false
+      },
+      "$comment": "ProviderEvent has no command_id/terminal-result linkage yet. Read/view work may remain honestly nonterminal. For draft/persist/device/external work, the host durably records acceptance and then returns a terminal ambiguous failed/timeout outcome so it cannot look successful or retry."
+    },
+    "completed": {
+      "terminal": true,
+      "host_verification_required_when_basis_present": true,
+      "verification_basis": [
+        "ref",
+        "revision_after"
+      ]
+    },
+    "previewed": {
+      "terminal": true,
+      "guarantees_no_commit": true
+    },
+    "rejected": {
+      "terminal": true,
+      "guarantees_no_effect": true
+    }
+  },
+  "event_semantics": {
+    "phase_0_scope": "state_invalidation",
+    "state_invalidation_receiver": "implemented",
+    "provider_pin": "bound_provider",
+    "sequence_policy": {
+      "replay_or_out_of_order": "reject",
+      "gap": "invalidate_and_reobserve"
+    },
+    "command_lifecycle": "not_implemented",
+    "required_for_command_lifecycle": [
+      "command_id",
+      "bounded_progress",
+      "terminal_action_result"
+    ]
+  },
+  "identifier_grammars": {
+    "action_name": "^[a-z][a-z0-9_]{0,31}(\\.[a-z][a-z0-9_]{0,31}){1,3}$",
+    "capability_id": "^[a-z][a-z0-9_]{0,31}(\\.[a-z][a-z0-9_]{0,31}){0,3}$",
+    "provider_id": "^[a-z][a-z0-9_]{0,31}(\\.[a-z][a-z0-9_]{0,31}){1,5}$",
+    "reference_kind": "^[a-z][a-z0-9_]{0,31}(\\.[a-z][a-z0-9_]{0,31}){0,3}$",
+    "reference_id": "^[A-Za-z0-9][A-Za-z0-9._\\-/:@+%]{0,255}$"
+  },
+  "bounds": {
+    "max_observed_objects": 20,
+    "max_argument_chars": 8000,
+    "argument_chars_unit": "unicode_scalar_values_in_compact_json",
+    "max_argument_depth": 16,
+    "max_argument_keys": 20,
+    "max_action_chars": 132,
+    "max_command_id_chars": 128,
+    "max_provider_chars": 200,
+    "max_revision_chars": 128,
+    "max_reference_kind_chars": 131,
+    "max_reference_id_chars": 256,
+    "max_reference_basis_chars": 128,
+    "max_property_chars": 400,
+    "max_result_data_chars": 2000,
+    "max_result_data_keys": 20,
+    "max_object_keys": 32,
+    "max_error_message_chars": 200,
+    "max_capabilities": 64,
+    "max_actions_per_capability": 32,
+    "max_plan_steps": 32,
+    "max_predicate_depth": 8,
+    "max_predicate_terms": 16,
+    "max_query_fields": 32,
+    "max_query_order_terms": 8,
+    "max_cursor_chars": 256,
+    "max_result_path_chars": 256
+  },
+  "action_call_input": {
+    "required": [
+      "action",
+      "command_id",
+      "arguments"
+    ],
+    "optional": [
+      "provider",
+      "expect_revision",
+      "dry_run",
+      "ref"
+    ],
+    "defaults_when_absent": {
+      "dry_run": false
+    },
+    "validation_order": [
+      "action",
+      "command_id",
+      "arguments",
+      "provider",
+      "expect_revision",
+      "dry_run",
+      "ref"
+    ],
+    "coercion": "forbidden",
+    "malformed_present_ref": "invalid_call"
+  },
+  "structured_errors": {
+    "invalid_call": {
+      "$comment": "Malformed envelope or descriptor mismatch. A host may make one deterministic repair; invalid_argument remains domain validation of a well-formed call.",
+      "always": [
+        "code",
+        "message",
+        "field_path",
+        "expected",
+        "got"
+      ],
+      "when_set": [
+        "suggestion"
+      ],
+      "expected_variants": {
+        "type": [
+          "kind",
+          "type"
+        ],
+        "enum": [
+          "kind",
+          "values"
+        ],
+        "range": [
+          "kind",
+          "minimum and/or maximum",
+          "unit (optional)"
+        ]
+      }
+    }
+  },
+  "envelopes": {
+    "effect": {
+      "always": [
+        "kind",
+        "reversibility",
+        "scope"
+      ],
+      "when_set": []
+    },
+    "error": {
+      "always": [
+        "code",
+        "message"
+      ],
+      "when_set": [
+        "denied_scope",
+        "expected",
+        "field_path",
+        "got",
+        "suggestion"
+      ]
+    },
+    "reference": {
+      "always": [
+        "id",
+        "kind",
+        "lifetime"
+      ],
+      "when_set": [
+        "basis"
+      ]
+    },
+    "epoch_set": {
+      "always": [],
+      "when_set": [
+        "document",
+        "focus",
+        "session",
+        "view"
+      ]
+    },
+    "observation_query": {
+      "always": [
+        "limit",
+        "scopes"
+      ],
+      "when_set": [
+        "ref"
+      ]
+    },
+    "observed_object": {
+      "always": [
+        "actions",
+        "properties",
+        "ref",
+        "title",
+        "type"
+      ],
+      "when_set": []
+    },
+    "observation": {
+      "always": [
+        "epochs",
+        "focus_kind",
+        "objects",
+        "omitted",
+        "provider",
+        "view_key",
+        "view_title"
+      ],
+      "when_set": []
+    },
+    "action_call": {
+      "always": [
+        "action",
+        "arguments",
+        "command_id",
+        "dry_run"
+      ],
+      "when_set": [
+        "expect_revision",
+        "provider",
+        "ref"
+      ]
+    },
+    "action_result": {
+      "always": [
+        "command_id",
+        "detail",
+        "status"
+      ],
+      "when_set": [
+        "data",
+        "error",
+        "ref",
+        "revision_after",
+        "revision_before",
+        "undo_token"
+      ]
+    },
+    "expectation": {
+      "always": [
+        "properties"
+      ],
+      "when_set": [
+        "ref",
+        "revision"
+      ]
+    },
+    "verification_result": {
+      "always": [
+        "detail",
+        "verified"
+      ],
+      "when_set": [
+        "observation"
+      ]
+    },
+    "provider_event": {
+      "always": [
+        "event",
+        "provider",
+        "seq"
+      ],
+      "when_set": [
+        "epochs",
+        "ref"
+      ]
+    },
+    "provider_features": {
+      "always": [
+        "cancellation",
+        "capability_query",
+        "events",
+        "preview",
+        "transactions"
+      ],
+      "when_set": []
+    },
+    "action_descriptor": {
+      "always": [
+        "arguments",
+        "effects",
+        "idempotent",
+        "name",
+        "preconditions",
+        "summary",
+        "verification"
+      ],
+      "when_set": [
+        "target",
+        "terminality",
+        "undo_of"
+      ]
+    },
+    "capability_summary": {
+      "always": [
+        "actions",
+        "id",
+        "title"
+      ],
+      "when_set": [
+        "action_count"
+      ]
+    },
+    "provider_manifest": {
+      "always": [
+        "application",
+        "capabilities",
+        "features",
+        "origin",
+        "platform",
+        "provider",
+        "scope",
+        "uap"
+      ],
+      "when_set": []
+    },
+    "cancel_outcome": {
+      "always": [
+        "command_id",
+        "detail",
+        "state"
+      ],
+      "when_set": []
+    }
+  }
+}

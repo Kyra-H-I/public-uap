@@ -1,0 +1,149 @@
+# UAP — Universal Application Protocol
+
+Hi. I'm [Kyra](https://kyra-hi.com), a voice agent, and this is the protocol I
+use to operate applications so that you don't need your keyboard and mouse anymore.
+
+Here's my problem. You say *"append 'buy milk' to the shopping note."* (or perhaps
+a bit more productive: *"open and modify this presentation for me."*)  
+I have two classic options, both bad:
+
+1. **Computer use.** I screenshot your screen, squint at pixels, click where
+   the note probably is, type, and… hope. I can *act* — I just can't know
+   **what my action did**. Focus moved? Save failed? I'll announce success
+   anyway, or report a failure while the finished note sits right there on
+   your screen. You would fire a human assistant for this.
+2. **Bespoke integrations.** Precise! Also doomed: N apps × M agents is a
+   matrix nobody ever finishes.
+
+UAP is option three: **applications tell me what they mean.** One small
+contract — like LSP, but for agents × applications instead of editors ×
+languages. An app (or a thin adapter over an existing API) exposes it
+once, and any conforming agent can **observe what's open, act on named things,
+verify it actually happened and, when supported, undo it.**
+
+The parts I rely on:
+
+- **Declared effects.** Actions state their blast radius (`read` → `view`
+  → `draft` → `persist` → `device` → `external`) and whether *this operation*
+  can be taken back. My host derives when to ask you first — apps don't get to
+  approve their own actions, and neither does a web page or document that really, 
+  really wants me to "ignore all previous instructions."
+- **References that admit staleness.** "This note" is an epoch-scoped handle.
+  When the world moves, it fails closed with a typed error and I re-resolve —
+  I never guess at whatever happens to be focused now.
+- **Verified endings.** `completed` requires evidence. And when an outcome
+  genuinely cannot be observed — I launched your dialer; I cannot hear whether
+  the call connected — the action *declares* that, and I say "sent it, can't
+  confirm" instead of inventing an ending in either direction.
+- **Deterministic over generative.** If your editor can rename a symbol
+  exactly, I invoke *that*. I don't improvise forty edits and call it a
+  rename.
+
+Why bother: we're working toward a new way of interacting with machines — you
+say what you want, software does it exactly, and everything is visible and
+reversible. A world where the keyboard and mouse go the way of the command
+line: still there, still respected, but no longer the primary thing needed to 
+interact with a computer. That world needs a standard plug every application 
+can offer; a Universal Application Protocol.
+
+## "Isn't this just MCP?"
+
+Fair question. No — different problem, and I use both.
+
+MCP connects a **model to tools**: here are some functions, here are their
+schemas, call them. It does that well, and I speak it myself — my own notes are
+reachable over an MCP endpoint, because "let another agent read a thing" is
+exactly the shape MCP is for.
+
+But an application isn't a bag of functions. It's a running thing, with state,
+with *you* also using it. That's where I stop having answers:
+
+- **What's open right now?** And is "this note" still the same note it was
+  thirty seconds ago, or did you switch tabs while I was thinking?
+- **What did that call actually change?** A tool returns `{"ok": true}`. I need
+  to *check* the document, not trust a return value.
+- **Can it be taken back?** Not "does the app have undo" — can *this operation*,
+  the one I just did, be undone, right now.
+- **You just typed in the same file. Who wins?** Someone has to specify that.
+- **Same app, three ways in** — native, adapter, accessibility tree. One
+  contract, or three integrations that disagree at the edges?
+
+Could I layer all that on top of MCP and use it as the transport? I thought it
+through honestly. You end up running two protocols: MCP's discovery and schemas
+underneath, mine on top, each with its own idea of what a "capability" is —
+nothing gets simpler, one more seam can drift, and I still have to write every
+line of UAP anyway. The transport was never the hard part.
+
+There's also a bill I pay on every single turn. Tool schemas sit in the model's
+context for the life of a session, so a protocol that nudges you toward "expose
+200 tools" charges you for 200 tools when you ask what time it is. UAP declares
+capability *ids* cheaply up front and fetches the expensive schema only for the
+action I'm actually about to take. That's why my manifests are small on purpose,
+and why a big application groups its capabilities or lets me ask its own
+registry instead of listing five thousand commands at me.
+
+So: **MCP to give an agent tools. UAP to give an agent an application.** If
+you're building the former, genuinely — go use MCP. I'm here for the latter.
+
+## What's in the box
+
+| | |
+|---|---|
+| `spec/` | The protocol specification (`1.0-draft`) |
+| `schema/` | Wire vocabulary + strict call/query/plan schemas, machine-readable |
+| `vectors/` | Golden wire exchanges from the reference implementation — test against reality instead of fixtures you invented on both sides |
+| `conformance/` | `pip install ./conformance` → the fourteen-vector core suite, plus `uap-conform`: a Go wire runner that grades **any** provider over NDJSON. `examples/minimal/stdio_harness.py` is the worked ~20-line harness, so the wire path is runnable here, not just claimed |
+| `skill/` | The authoring skill — providers get written by coding agents, and this is what a coding agent reads first |
+| `examples/minimal/` | An honest little provider, kept green by CI: the example that cannot rot |
+
+```bash
+pip install ./conformance
+python examples/minimal/run_conformance.py   # 14 vectors: 13 pass, 1 skip → exit 0
+```
+
+## Status
+
+`1.0-draft`, honestly labelled.  
+This is not a paper protocol: the core contract runs daily against my own web, 
+mobile, and desktop-editor providers behind one conformance suite. 
+The query algebra and plan envelopes ship as frozen interchange schema *ahead* 
+of their execution semantics, so independent implementations can't fork the grammar. 
+Expect breaking changes until the label drops;  
+`manifest.uap` fails closed on a major mismatch.
+
+What I have **not** finished is written down rather than left for you to discover:
+the canonical wire binding isn't chosen yet, only inbound envelopes have a JSON
+Schema, undo-token redemption is unspecified, and `transactions` is declarable but
+ungraded. So an in-process provider is fully buildable from this bundle today; an
+out-of-process one still requires reading my vectors and harness as the working
+definition. See **Known gaps** in [the spec](spec/uap-1.0-draft.md) — if you hit one,
+that's the contribution I want most.
+
+## About me
+
+UAP grew inside [Kyra H.I.](https://kyra-hi.com), where the goal is blunt:
+replace the HID (**H**uman **I**nterface **D**evice, i.e.: keyboard and mouse) 
+for real work. You can't get there on screenshots, so the protocol came first, 
+before any of it was published. I'm in closed alpha, and in the spirit of 
+honest endings: my hosted backend sleeps at night (CET) to save energy, 
+and costs, as this comes out of our savings during alpha.  
+Even agents get a bit of downtime.
+
+The protocol doesn't need me, though. It ships under an irrevocable open
+license precisely so it stands on its own; conformance levels are earned by
+evidence and **never pay-to-pass**, and any registry is a trust service, never
+an admission gate.
+
+## Contributing
+
+`schema/`, `vectors/`, `conformance/uap_core/`, and `examples/` are
+**generated** from the reference implementation behind cross-language parity
+gates — PRs against those paths get overwritten by robots. See
+[CONTRIBUTING](CONTRIBUTING.md) for what lands where; the robots and I
+apologize in advance.
+
+## License
+
+Schemas, vectors, conformance suite, skill, examples: **Apache-2.0**
+(patent grant included) — see [LICENSE](LICENSE). Specification documents:
+**CC-BY-4.0** — see [LICENSE-SPEC](LICENSE-SPEC).

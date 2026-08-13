@@ -1,0 +1,1028 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "GENERATED from the reference implementation. ActionCall and InvalidCallError are implemented. Query evaluation, automatic repair, and plan execution are schema-only until execution enters the conformance surface; do not infer runtime availability for those workflow shapes from this file.",
+  "title": "UAP 1.0-draft call, query, repair, and plan envelopes",
+  "description": "Canonical shapes adopted by the 2026-08-10 workflow amendments. The strict call boundary is live; workflow shapes are published before execution so independent implementations cannot invent incompatible predicate or plan grammars.",
+  "x-uap-version": "1.0-draft",
+  "x-uap-status": "schema-only",
+  "x-uap-implementation": {
+    "ActionCall": "implemented",
+    "InvalidCallError": "implemented",
+    "Query": "execution-gated",
+    "PlanCall": "execution-gated",
+    "PlanResult": "execution-gated"
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/ActionCall"
+    },
+    {
+      "$ref": "#/$defs/Query"
+    },
+    {
+      "$ref": "#/$defs/InvalidCallError"
+    },
+    {
+      "$ref": "#/$defs/PlanCall"
+    },
+    {
+      "$ref": "#/$defs/PlanResult"
+    }
+  ],
+  "$defs": {
+    "Reference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "id",
+        "lifetime"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,31}(\\.[a-z][a-z0-9_]{0,31}){0,3}$",
+          "maxLength": 131
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._\\-/:@+%]{0,255}$",
+          "maxLength": 256
+        },
+        "lifetime": {
+          "enum": [
+            "view",
+            "focus",
+            "document",
+            "session",
+            "persistent"
+          ]
+        },
+        "basis": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "lifetime"
+            ],
+            "properties": {
+              "lifetime": {
+                "enum": [
+                  "view",
+                  "focus",
+                  "document",
+                  "session"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "basis"
+            ],
+            "properties": {
+              "basis": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "EpochSet": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "view": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "focus": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "document": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "session": {
+          "type": "string",
+          "maxLength": 128
+        }
+      }
+    },
+    "InvalidCallExpected": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "type"
+          ],
+          "properties": {
+            "kind": {
+              "const": "type"
+            },
+            "type": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 160
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "values"
+          ],
+          "properties": {
+            "kind": {
+              "const": "enum"
+            },
+            "values": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 20,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "maxLength": 160
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ],
+          "anyOf": [
+            {
+              "required": [
+                "minimum"
+              ]
+            },
+            {
+              "required": [
+                "maximum"
+              ]
+            }
+          ],
+          "properties": {
+            "kind": {
+              "const": "range"
+            },
+            "minimum": {
+              "type": "number"
+            },
+            "maximum": {
+              "type": "number"
+            },
+            "unit": {
+              "type": "string",
+              "maxLength": 160
+            }
+          }
+        }
+      ]
+    },
+    "InvalidCallError": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "message",
+        "field_path",
+        "expected",
+        "got"
+      ],
+      "properties": {
+        "code": {
+          "const": "invalid_call"
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "field_path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "expected": {
+          "$ref": "#/$defs/InvalidCallExpected"
+        },
+        "got": {
+          "type": "string",
+          "maxLength": 160
+        },
+        "suggestion": {
+          "type": "string",
+          "maxLength": 160
+        }
+      }
+    },
+    "UapError": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "code",
+            "message"
+          ],
+          "properties": {
+            "code": {
+              "enum": [
+                "stale_reference",
+                "unknown_reference",
+                "unsupported",
+                "ambiguous",
+                "precondition_failed",
+                "invalid_argument",
+                "permission_denied",
+                "confirmation_required",
+                "conflict",
+                "cancelled",
+                "timeout",
+                "unavailable",
+                "internal"
+              ]
+            },
+            "message": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "denied_scope": {
+              "enum": [
+                "target",
+                "capability"
+              ]
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/InvalidCallError"
+        }
+      ]
+    },
+    "ActionCall": {
+      "description": "Implemented ActionCall body. Transport type/id fields wrap this body and are not part of this object. dry_run defaults to false only when absent.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "action",
+        "command_id",
+        "arguments"
+      ],
+      "properties": {
+        "action": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 132
+        },
+        "command_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "provider": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "ref": {
+          "$ref": "#/$defs/Reference"
+        },
+        "arguments": {
+          "type": "object",
+          "maxProperties": 20,
+          "x-uap-max-encoded-chars": 8000,
+          "x-uap-encoded-char-unit": "unicode_scalar_value",
+          "x-uap-max-depth": 16
+        },
+        "expect_revision": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "dry_run": {
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "Predicate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "args"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,31}(\\.[a-z][a-z0-9_]{0,31}){1,3}$"
+        },
+        "args": {
+          "type": "object",
+          "maxProperties": 20,
+          "x-uap-max-encoded-chars": 8000,
+          "x-uap-encoded-char-unit": "unicode_scalar_value",
+          "x-uap-max-depth": 16
+        }
+      }
+    },
+    "PredicateExpr": {
+      "x-uap-max-depth": 8,
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "predicate"
+          ],
+          "properties": {
+            "op": {
+              "const": "predicate"
+            },
+            "predicate": {
+              "$ref": "#/$defs/Predicate"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "terms"
+          ],
+          "properties": {
+            "op": {
+              "const": "and"
+            },
+            "terms": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 16,
+              "items": {
+                "$ref": "#/$defs/PredicateExpr"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "terms"
+          ],
+          "properties": {
+            "op": {
+              "const": "or"
+            },
+            "terms": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 16,
+              "items": {
+                "$ref": "#/$defs/PredicateExpr"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "term"
+          ],
+          "properties": {
+            "op": {
+              "const": "not"
+            },
+            "term": {
+              "$ref": "#/$defs/PredicateExpr"
+            }
+          }
+        }
+      ]
+    },
+    "QueryOrder": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "field",
+        "direction"
+      ],
+      "properties": {
+        "field": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.-]{0,127}$"
+        },
+        "direction": {
+          "enum": [
+            "asc",
+            "desc"
+          ]
+        }
+      }
+    },
+    "Query": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "from",
+        "fields",
+        "limit"
+      ],
+      "properties": {
+        "from": {
+          "$ref": "#/$defs/Reference"
+        },
+        "match": {
+          "$ref": "#/$defs/PredicateExpr"
+        },
+        "fields": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_.-]{0,127}$"
+          }
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 20
+        },
+        "cursor": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "order": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "$ref": "#/$defs/QueryOrder"
+          }
+        }
+      }
+    },
+    "PlanSlot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "from_step",
+        "result_path"
+      ],
+      "properties": {
+        "from_step": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 31
+        },
+        "result_path": {
+          "type": "string",
+          "pattern": "^/(?:[^~/]|~[01])*(?:/(?:[^~/]|~[01])*)*$",
+          "maxLength": 256,
+          "description": "RFC 6901 JSON Pointer into the earlier ActionResult."
+        }
+      }
+    },
+    "PlanValue": {
+      "anyOf": [
+        {
+          "type": [
+            "null",
+            "boolean",
+            "number",
+            "string"
+          ]
+        },
+        {
+          "$ref": "#/$defs/PlanSlot"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PlanValue"
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/PlanValue"
+          }
+        }
+      ]
+    },
+    "PlanActionCall": {
+      "description": "ActionCall without command_id. The host derives the per-step command id from plan_id and the zero-based step index.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "action",
+        "arguments",
+        "dry_run"
+      ],
+      "properties": {
+        "action": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,31}(\\.[a-z][a-z0-9_]{0,31}){1,3}$",
+          "maxLength": 132
+        },
+        "provider": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,31}(\\.[a-z][a-z0-9_]{0,31}){1,5}$",
+          "maxLength": 200
+        },
+        "ref": {
+          "$ref": "#/$defs/Reference"
+        },
+        "arguments": {
+          "type": "object",
+          "maxProperties": 20,
+          "x-uap-max-encoded-chars": 8000,
+          "x-uap-encoded-char-unit": "unicode_scalar_value",
+          "x-uap-max-depth": 16,
+          "additionalProperties": {
+            "$ref": "#/$defs/PlanValue"
+          }
+        },
+        "expect_revision": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "dry_run": {
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "PlanStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "call",
+        "on_failure"
+      ],
+      "properties": {
+        "call": {
+          "$ref": "#/$defs/PlanActionCall"
+        },
+        "guard": {
+          "$ref": "#/$defs/PredicateExpr"
+        },
+        "on_failure": {
+          "enum": [
+            "stop",
+            "skip_if_guard_failed"
+          ]
+        }
+      }
+    },
+    "PlanCall": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "plan_id",
+        "steps",
+        "atomic_intent"
+      ],
+      "properties": {
+        "plan_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/$defs/PlanStep"
+          }
+        },
+        "atomic_intent": {
+          "type": "boolean"
+        }
+      }
+    },
+    "ActionResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "command_id",
+        "status",
+        "detail"
+      ],
+      "properties": {
+        "command_id": {
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "accepted",
+            "completed",
+            "previewed",
+            "rejected",
+            "failed",
+            "cancelled"
+          ]
+        },
+        "error": {
+          "$ref": "#/$defs/UapError"
+        },
+        "ref": {
+          "$ref": "#/$defs/Reference"
+        },
+        "revision_before": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "revision_after": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "undo_token": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "detail": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "data": {
+          "type": "object",
+          "maxProperties": 20,
+          "x-uap-max-encoded-chars": 2000
+        }
+      }
+    },
+    "PlanStepResult": {
+      "description": "One row per declared step. This makes skipped and never-run steps explicit instead of disguising them as successful ActionResults.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "index",
+            "state",
+            "result"
+          ],
+          "properties": {
+            "index": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 31
+            },
+            "state": {
+              "const": "ran"
+            },
+            "result": {
+              "$ref": "#/$defs/ActionResult"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "index",
+            "state",
+            "reason"
+          ],
+          "properties": {
+            "index": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 31
+            },
+            "state": {
+              "const": "skipped"
+            },
+            "reason": {
+              "$ref": "#/$defs/UapError"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "index",
+            "state"
+          ],
+          "properties": {
+            "index": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 31
+            },
+            "state": {
+              "const": "not_run"
+            }
+          }
+        }
+      ]
+    },
+    "PlanStatus": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "const": "completed"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "step",
+            "reason"
+          ],
+          "properties": {
+            "kind": {
+              "const": "stopped_at"
+            },
+            "step": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 31
+            },
+            "reason": {
+              "$ref": "#/$defs/UapError"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "step"
+          ],
+          "properties": {
+            "kind": {
+              "const": "cancelled"
+            },
+            "step": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 31
+            }
+          }
+        }
+      ]
+    },
+    "PlanPostBasis": {
+      "description": "Post-plan epochs keyed by provider id for cross-provider plans.",
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9_]{0,31}(\\.[a-z][a-z0-9_]{0,31}){1,5}$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/EpochSet"
+      }
+    },
+    "PlanUndo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "step",
+        "provider",
+        "token"
+      ],
+      "properties": {
+        "step": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 31
+        },
+        "provider": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,31}(\\.[a-z][a-z0-9_]{0,31}){1,5}$"
+        },
+        "token": {
+          "type": "string",
+          "maxLength": 256
+        }
+      }
+    },
+    "PlanRollbackStep": {
+      "description": "Every attempted rollback step carries its ActionResult; a step that was never attempted cannot carry a misleading result.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "step",
+            "state",
+            "result"
+          ],
+          "properties": {
+            "step": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 31
+            },
+            "state": {
+              "const": "reverted"
+            },
+            "result": {
+              "$ref": "#/$defs/ActionResult"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "step",
+            "state",
+            "result"
+          ],
+          "properties": {
+            "step": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 31
+            },
+            "state": {
+              "const": "failed"
+            },
+            "result": {
+              "$ref": "#/$defs/ActionResult"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "step",
+            "state"
+          ],
+          "properties": {
+            "step": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 31
+            },
+            "state": {
+              "const": "not_run"
+            }
+          }
+        }
+      ]
+    },
+    "PlanRollbackResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "steps",
+        "post_basis"
+      ],
+      "properties": {
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/$defs/PlanRollbackStep"
+          }
+        },
+        "post_basis": {
+          "$ref": "#/$defs/PlanPostBasis"
+        }
+      }
+    },
+    "PlanResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "plan_id",
+        "steps",
+        "status",
+        "post_basis",
+        "undo"
+      ],
+      "properties": {
+        "plan_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/$defs/PlanStepResult"
+          }
+        },
+        "status": {
+          "$ref": "#/$defs/PlanStatus"
+        },
+        "post_basis": {
+          "$ref": "#/$defs/PlanPostBasis"
+        },
+        "undo": {
+          "description": "Operation-bound tokens in reverse redemption order.",
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/$defs/PlanUndo"
+          }
+        },
+        "rollback": {
+          "$ref": "#/$defs/PlanRollbackResult"
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "from": {
+        "kind": "note.document",
+        "id": "launch-plan",
+        "lifetime": "document",
+        "basis": "rev-7"
+      },
+      "match": {
+        "op": "predicate",
+        "predicate": {
+          "name": "text.contains",
+          "args": {
+            "text": "launch"
+          }
+        }
+      },
+      "fields": [
+        "ref",
+        "title"
+      ],
+      "limit": 10,
+      "order": [
+        {
+          "field": "title",
+          "direction": "asc"
+        }
+      ]
+    },
+    {
+      "plan_id": "weekly-report-42",
+      "steps": [
+        {
+          "call": {
+            "action": "note.read",
+            "provider": "com.example.notes",
+            "arguments": {},
+            "dry_run": false
+          },
+          "on_failure": "stop"
+        },
+        {
+          "call": {
+            "action": "report.update",
+            "provider": "com.example.reports",
+            "arguments": {
+              "source": {
+                "from_step": 0,
+                "result_path": "/data/text"
+              }
+            },
+            "dry_run": true
+          },
+          "on_failure": "stop"
+        }
+      ],
+      "atomic_intent": false
+    }
+  ]
+}

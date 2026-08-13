@@ -1,0 +1,13 @@
+[project]
+name = "uap-conformance"
+version = "1.0.dev0"
+description = "UAP (Universal Application Protocol) reference protocol envelopes and core conformance suite, protocol version 1.0-draft."
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["uap_core"]

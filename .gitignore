@@ -1,0 +1,6 @@
+# Local build artifacts from testing the pip package in-place.
+build/
+dist/
+*.egg-info/
+__pycache__/
+.venv/
