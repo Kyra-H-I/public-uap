@@ -16,6 +16,7 @@ type fakeProvider struct {
 	incoherentRefs   bool // references minted against a basis the epochs reject
 	malformedRef     bool // a document reference with no basis at all (wire-only flaw)
 	absorbUnknown    bool // unknown action returns completed
+	lyingActionCount bool // a DEFERRED capability declares a size its reply does not match
 	forgetCommandID  bool // results echo a different command id
 	nondeterministic bool // the same command id gives a different answer on replay
 	cancelTooLate    bool // declares cancellation but answers too_late for unstarted work
@@ -61,15 +62,28 @@ func (f *fakeProvider) describe() map[string]any {
 		version = "2.0-draft"
 	}
 	return map[string]any{
-		"provider":    "com.example.fake",
-		"application": "example.app",
-		"uap":         version,
-		"capabilities": []any{map[string]any{
-			"id":      "fake.documents",
-			"title":   "Documents",
-			"actions": toAny(f.actions()),
-		}},
-		"features": map[string]any{"events": true, "cancellation": true},
+		"provider":     "com.example.fake",
+		"application":  "example.app",
+		"uap":          version,
+		"capabilities": []any{f.capabilityEntry()},
+		"features":     map[string]any{"events": true, "cancellation": true},
+	}
+}
+
+// capabilityEntry is the manifest's view of the one capability. A DEFERRED capability lists no
+// actions and declares how many it has instead, which is the shape whose claim can be false.
+func (f *fakeProvider) capabilityEntry() map[string]any {
+	if f.lyingActionCount {
+		return map[string]any{
+			"id":           "fake.documents",
+			"title":        "Documents",
+			"action_count": 400, // the reply describes four
+		}
+	}
+	return map[string]any{
+		"id":      "fake.documents",
+		"title":   "Documents",
+		"actions": toAny(f.actions()),
 	}
 }
 
@@ -254,6 +268,10 @@ func TestEachFlawFailsExactlyItsVector(t *testing.T) {
 		vector string
 	}{
 		{"ghost action", func(f *fakeProvider) { f.advertiseGhost = true }, "capability.describes"},
+		// The host's grader has always checked a deferred capability's declared size; this one did
+		// not, so a provider could pass here and fail there — and this is the grader the published
+		// bundle hands to anyone wanting to grade their own provider.
+		{"lying action_count", func(f *fakeProvider) { f.lyingActionCount = true }, "capability.describes"},
 		{"wrong protocol major", func(f *fakeProvider) { f.badVersion = true }, "manifest.version"},
 		{"silent effects", func(f *fakeProvider) { f.silentEffects = true }, "action.effects"},
 		{"unfounded undo", func(f *fakeProvider) { f.unfoundedUndo = true }, "action.undo_claim"},

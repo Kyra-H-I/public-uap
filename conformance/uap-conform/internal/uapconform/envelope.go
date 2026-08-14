@@ -19,6 +19,16 @@ type manifest struct {
 type capability struct {
 	ID      string
 	Actions []string
+	// A DEFERRED capability lists no actions and declares how many it has, so the host can decide
+	// whether to ask. That number is a claim, and this grader exists to check claims: parsing it is
+	// what lets `capability.describes` catch a capability that says 400 and hands back 3.
+	ActionCount int
+}
+
+// deferred reports whether this capability defers its action list, by the same rule the protocol
+// gives the host: no actions listed, but a non-zero declared count.
+func (c capability) deferred() bool {
+	return len(c.Actions) == 0 && c.ActionCount > 0
 }
 
 type features struct {
@@ -142,6 +152,30 @@ func asList(v any) []any {
 	return l
 }
 
+// asInt reads a count as an int, from either shape it arrives in. Over the wire JSON has no integer
+// type so it is a float64; in-process (the Go conformance harness drives a provider directly) it is
+// an int. Accepting only the wire shape made the harness silently read every count as 0, which
+// `deferred` then treats as "not deferred" — the grader stopped grading and its own test passed for
+// the wrong reason. Anything else (absent, a string, a fraction, negative) is 0: grade nothing
+// rather than grade wrongly.
+func asInt(v any) int {
+	switch n := v.(type) {
+	case int:
+		if n >= 0 {
+			return n
+		}
+	case int64:
+		if n >= 0 {
+			return int(n)
+		}
+	case float64:
+		if n >= 0 && n == float64(int(n)) {
+			return int(n)
+		}
+	}
+	return 0
+}
+
 func asStrings(v any) []string {
 	raw := asList(v)
 	out := make([]string, 0, len(raw))
@@ -172,8 +206,9 @@ func parseManifest(d map[string]any) manifest {
 			continue
 		}
 		m.Capabilities = append(m.Capabilities, capability{
-			ID:      asString(c["id"]),
-			Actions: asStrings(c["actions"]),
+			ID:          asString(c["id"]),
+			Actions:     asStrings(c["actions"]),
+			ActionCount: asInt(c["action_count"]),
 		})
 	}
 	return m

@@ -13,6 +13,11 @@ type ctx struct {
 	manifest    manifest
 	observation observation
 	descriptors map[string]descriptor
+	// Per-capability descriptor counts, for checking a deferred capability's declared size.
+	describedPerCapability map[string]int
+	// Actions that arrived via a DEFERRED capability's reply. They are advertised by that
+	// capability's existence, not by a name in the manifest.
+	deferredNames map[string]bool
 	// order preserves first-seen descriptor order for probe selection, which the
 	// reference gets for free from Python's ordered dicts.
 	order []string
@@ -31,6 +36,11 @@ func RunCore(peer Peer) (*Report, error) {
 	report := &Report{Provider: m.Provider}
 
 	descriptors := map[string]descriptor{}
+	// What each capability actually handed back. The flat `descriptors` map loses that grouping, and
+	// both checks below need it: a deferred capability's actions are discoverable ONLY through its
+	// reply, and its declared size can only be compared against that same reply.
+	describedPerCapability := map[string]int{}
+	deferredNames := map[string]bool{}
 	var order []string
 	describeError := ""
 	for _, cap := range m.Capabilities {
@@ -54,6 +64,10 @@ func RunCore(peer Peer) (*Report, error) {
 				order = append(order, parsed.Name)
 			}
 			descriptors[parsed.Name] = parsed
+			describedPerCapability[cap.ID]++
+			if cap.deferred() {
+				deferredNames[parsed.Name] = true
+			}
 		}
 	}
 
@@ -66,11 +80,13 @@ func RunCore(peer Peer) (*Report, error) {
 	}
 
 	c := &ctx{
-		peer:        peer,
-		manifest:    m,
-		observation: parseObservation(observeReply),
-		descriptors: descriptors,
-		order:       order,
+		peer:                   peer,
+		manifest:               m,
+		describedPerCapability: describedPerCapability,
+		deferredNames:          deferredNames,
+		observation:            parseObservation(observeReply),
+		descriptors:            descriptors,
+		order:                  order,
 	}
 
 	if describeError != "" {
@@ -140,7 +156,12 @@ func vectorCapabilityDescribes(c *ctx) VectorResult {
 		}
 	}
 	for name := range c.descriptors {
-		if !advertised[name] {
+		// A DEFERRED capability lists no actions on purpose — the host asks for them when it needs
+		// them — so its descriptors are discoverable through that capability, not through a name in
+		// the manifest. Without this, the grader called every action of every deferred capability
+		// "undiscoverable": a provider using the protocol exactly as designed failed, and failed
+		// with a reason that pointed at the wrong thing.
+		if !advertised[name] && !c.deferredNames[name] {
 			extra = append(extra, name)
 		}
 	}
@@ -151,6 +172,19 @@ func vectorCapabilityDescribes(c *ctx) VectorResult {
 	if len(extra) > 0 {
 		sort.Strings(extra)
 		return fail("capability.describes", "undiscoverable: "+strings.Join(firstFive(extra), ", "))
+	}
+	// A declared size is a claim, and a claim gets checked. A capability that says 400 and hands
+	// back 3 has told the host something false about how much it can do. The host's own grader has
+	// always checked this; this one did not, so a provider could pass here and fail there — and it
+	// is THIS grader that the published bundle offers to anyone wanting to grade a provider.
+	for _, cap := range c.manifest.Capabilities {
+		if !cap.deferred() {
+			continue
+		}
+		if n := c.describedPerCapability[cap.ID]; n != 0 && n != cap.ActionCount {
+			return fail("capability.describes", fmt.Sprintf(
+				"%s declares %d actions but describes %d", cap.ID, cap.ActionCount, n))
+		}
 	}
 	for _, cap := range c.manifest.Capabilities {
 		if len(cap.Actions) > MaxActionsPerCapability {
