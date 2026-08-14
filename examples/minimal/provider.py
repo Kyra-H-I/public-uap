@@ -35,6 +35,7 @@ from uap_core.model import (
     ProviderEvent,
     VerificationResult,
 )
+from uap_core.provider import ProviderUnreachable
 from uap_core.references import EpochSet, Reference, ReferenceLifetime, check_reference
 
 READ_ACTION = "fake.read"
@@ -86,6 +87,8 @@ class FakeProvider:
     """An honest provider. Tests break exactly one property at a time by subclassing."""
 
     provider_id: str = "com.example.fake"
+    #: When true, `observe` raises the way a provider whose far end has gone does.
+    unreachable: bool = False
     origin: ProviderOrigin = ProviderOrigin.NATIVE
     document_basis: str = "rev-1"
     operation_revision: str = ""
@@ -124,6 +127,8 @@ class FakeProvider:
         )
 
     async def observe(self, query: ObservationQuery) -> Observation:
+        if self.unreachable:
+            raise ProviderUnreachable(f"{self.provider_id} is gone")
         # Two documents, so a test can prove an approval bound to one cannot fire on the other.
         return Observation(
             provider=self.provider_id,
