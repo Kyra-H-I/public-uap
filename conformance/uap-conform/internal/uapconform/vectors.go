@@ -213,7 +213,13 @@ func vectorUndoClaimsBacked(c *ctx) VectorResult {
 	for name, d := range c.descriptors {
 		claims := false
 		for _, e := range d.Effects {
-			if e.Reversibility == ReversibilityOperationUndo {
+			// CHECKPOINT counts too, and it was the gap. A checkpoint claim buys the same
+			// confirmation relief as an operation-bound undo, so a durable write declaring
+			// `checkpoint` with no stated verification was relieved of the handshake while carrying
+			// an obligation nothing ever checked — and the protocol has no call that redeems a
+			// checkpoint, so nothing downstream could catch it either. The host's grader has always
+			// counted it; this one did not, so the same provider passed here and failed there.
+			if e.Reversibility == ReversibilityOperationUndo || e.Reversibility == ReversibilityCheckpoint {
 				claims = true
 			}
 		}

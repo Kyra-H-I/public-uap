@@ -8,19 +8,20 @@ import (
 // fakeProvider is the envelope-level twin of the reference implementation's FakeProvider — an
 // honest provider, with one flag per flaw so each test breaks exactly one property.
 type fakeProvider struct {
-	advertiseGhost   bool // advertise an action that has no descriptor
-	silentEffects    bool // fake.read declares no effects
-	unfoundedUndo    bool // fake.save claims operation_undo with no verification
-	badVersion       bool // manifest on a different protocol major
-	overCap          bool // observation dumps more objects than the cap
-	incoherentRefs   bool // references minted against a basis the epochs reject
-	malformedRef     bool // a document reference with no basis at all (wire-only flaw)
-	absorbUnknown    bool // unknown action returns completed
-	lyingActionCount bool // a DEFERRED capability declares a size its reply does not match
-	forgetCommandID  bool // results echo a different command id
-	nondeterministic bool // the same command id gives a different answer on replay
-	cancelTooLate    bool // declares cancellation but answers too_late for unstarted work
-	eagerDryRun      bool // executes a dry run
+	advertiseGhost      bool // advertise an action that has no descriptor
+	silentEffects       bool // fake.read declares no effects
+	unfoundedUndo       bool // fake.save claims operation_undo with no verification
+	badVersion          bool // manifest on a different protocol major
+	overCap             bool // observation dumps more objects than the cap
+	incoherentRefs      bool // references minted against a basis the epochs reject
+	malformedRef        bool // a document reference with no basis at all (wire-only flaw)
+	absorbUnknown       bool // unknown action returns completed
+	lyingActionCount    bool // a DEFERRED capability declares a size its reply does not match
+	unfoundedCheckpoint bool // fake.save claims checkpoint reversibility with no verification
+	forgetCommandID     bool // results echo a different command id
+	nondeterministic    bool // the same command id gives a different answer on replay
+	cancelTooLate       bool // declares cancellation but answers too_late for unstarted work
+	eagerDryRun         bool // executes a dry run
 
 	calls map[string]int
 }
@@ -96,6 +97,13 @@ func (f *fakeProvider) capability() map[string]any {
 	if f.unfoundedUndo {
 		saveVerification = ""
 	}
+	// A checkpoint claim buys the same relief as an operation-bound undo, so an unverifiable one is
+	// the same flaw wearing the other word.
+	saveReversibility := ReversibilityOperationUndo
+	if f.unfoundedCheckpoint {
+		saveReversibility = ReversibilityCheckpoint
+		saveVerification = ""
+	}
 	return map[string]any{"actions": []any{
 		map[string]any{
 			"name": fakeRead, "summary": "Read one document.",
@@ -105,7 +113,7 @@ func (f *fakeProvider) capability() map[string]any {
 		map[string]any{
 			"name": fakeSave, "summary": "Save the open document.",
 			"effects": []any{map[string]any{
-				"kind": KindPersist, "reversibility": ReversibilityOperationUndo,
+				"kind": KindPersist, "reversibility": saveReversibility,
 			}},
 			"target": LifetimeDocument, "verification": saveVerification,
 		},
@@ -272,6 +280,7 @@ func TestEachFlawFailsExactlyItsVector(t *testing.T) {
 		// not, so a provider could pass here and fail there — and this is the grader the published
 		// bundle hands to anyone wanting to grade their own provider.
 		{"lying action_count", func(f *fakeProvider) { f.lyingActionCount = true }, "capability.describes"},
+		{"unfounded checkpoint", func(f *fakeProvider) { f.unfoundedCheckpoint = true }, "action.undo_claim"},
 		{"wrong protocol major", func(f *fakeProvider) { f.badVersion = true }, "manifest.version"},
 		{"silent effects", func(f *fakeProvider) { f.silentEffects = true }, "action.effects"},
 		{"unfounded undo", func(f *fakeProvider) { f.unfoundedUndo = true }, "action.undo_claim"},
