@@ -202,6 +202,71 @@ modes:
 > host is only required to implement enumerated discovery in this draft. Asking costs a
 > model turn, so the rule is: enumerate if it fits, group if it does not, ask for the tail.
 
+#### Public discovery at the origin
+
+Everything above describes the manifest a host fetches *after* it holds a session and a
+credential. That leaves the question a third party cannot otherwise answer: **how does an
+application advertise that it speaks UAP at all?** A desktop provider announces itself over a
+local channel whose peer credentials the operating system supplies; a web application has no
+such channel, and the web is where third-party adoption starts.
+
+Web applications advertise at a well-known URI
+([RFC 8615](https://www.rfc-editor.org/rfc/rfc8615)):
+
+```
+GET https://app.example.com/.well-known/uap.json
+```
+
+The document is deliberately thin — identity and reach, nothing else:
+
+```json
+{
+  "uap": "1.0-draft",
+  "provider": "com.example.app",
+  "application": "example.app",
+  "endpoint": "https://app.example.com/uap",
+  "authorization_server": "https://auth.example.com",
+  "catalog": {
+    "url": "https://app.example.com/uap/catalog.json",
+    "digest": "sha256:…"
+  }
+}
+```
+
+**Two documents, not one.** The origin document is an identity record and changes almost
+never; the catalog changes with every application release. Conflating them would invalidate
+the identity record's cache on every deploy — and, once signing exists, its signature too.
+The extra fetch is cacheable and paid once per origin.
+
+The normative rules:
+
+- **The catalog is a `ProviderManifest`, not a second format.** It carries `scope: "public"`
+  and is otherwise the same schema, so one parity gate and one set of conformance vectors
+  cover both. A separately specified public format drifts against the bound one within two
+  releases.
+- **`bound ⊆ public`.** The catalog is the unscoped superset — what this deployment can ever
+  do — while the bound manifest is what *this* session can do now. A capability present at
+  bind but absent from the catalog is drift or a dishonest provider. A catalog capability
+  absent at bind is ordinary: no permission, wrong plan, feature disabled.
+- **The catalog is a curated projection, not a dump.** Publication is opt-in per capability;
+  an application may expose six capabilities publicly and keep two hundred behind
+  authentication. Unauthenticated enumeration of every consequential action is a
+  reconnaissance gift, and the answer is curation rather than obscurity.
+- **Neither document sets an assurance level or a confirmation class.** A public file served
+  by the application is the same untrusted-content class as page text, and a
+  pre-authentication document is weaker evidence again. The catalog names *what exists*; the
+  host decides *what it costs*.
+- **Origin-scoped, with a document-level escape hatch.** RFC 8615 is rooted at the origin,
+  which excludes tenants at a path and many-applications-per-origin deployments. A document
+  may therefore point at its own catalog with `<link rel="uap" href="…">`, constrained to
+  **same-origin hrefs** — a cross-origin link is an injection redirecting the host at
+  attacker infrastructure.
+
+> **Status:** specified ahead of host execution, as with grouped discovery above. The two
+> documents and the invariants binding them are frozen, but a conforming host is not required
+> to implement a fetch path in this draft, and no conformance vector grades one. The `uap`
+> well-known suffix is to be registered provisionally under RFC 8615.
+
 ### §2 References and staleness
 
 Objects are addressed by **references**, never by coordinates. Every reference
@@ -587,9 +652,10 @@ desktop editor; strict atomic call decoding with machine-repairable
 §5; the fourteen-vector core suite and its wire-level runner.
 
 Schema-only in this draft (shared grammar published ahead of execution): the
-query algebra and plan envelopes (§3, §8), grouped capability discovery, and
-`features.capability_query` (§1). A provider may declare these and the shapes are
-frozen, but a conforming host is not required to execute them yet.
+query algebra and plan envelopes (§3, §8), grouped capability discovery,
+`features.capability_query`, and public discovery at the origin (§1). A provider
+may declare or serve these and the shapes are frozen, but a conforming host is
+not required to execute or fetch them yet.
 
 ### Known gaps — read this before implementing
 
