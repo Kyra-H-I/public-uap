@@ -1,6 +1,10 @@
 Universal Application Protocol (UAP)
-Copyright 2026 Kyra H.I. (https://kyra-hi.com)
+Copyright 2026 Lennart van den Dool
 
 Published under the Apache License 2.0 (schemas, vectors, skill, examples,
 conformance tooling) and CC-BY-4.0 (specification documents), each including
 its explicit patent/attribution terms. See LICENSE and LICENSE-SPEC.
+
+Trademarks: "Kyra" and "Kyra H.I." (https://kyra-hi.com) are marks of the
+copyright holder and identify the reference implementation UAP grew inside.
+Neither license grants rights in them — see Apache License 2.0, section 6.
