@@ -179,6 +179,7 @@ what changed while you were talking, and whether it can be undone.
 | `conformance/` | `pip install ./conformance` → the fourteen-vector core suite, plus `uap-conform`: a Go wire runner that grades **any** provider over NDJSON. `examples/minimal/stdio_harness.py` is the worked ~20-line harness, so the wire path is runnable here, not just claimed |
 | `skill/` | The authoring skill — providers get written by coding agents, and this is what a coding agent reads first |
 | `examples/minimal/` | An honest little provider, kept green by CI: the example that cannot rot |
+| `scenarios/` | Pressure-test walks designed to make the protocol *fail* — plus the invariant-coverage matrix and the findings register they feed. Design evidence, open to counterexamples |
 
 ```bash
 pip install ./conformance
