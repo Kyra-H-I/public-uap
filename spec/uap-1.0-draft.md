@@ -202,11 +202,16 @@ distinction is load-bearing in both directions:
   Collapsing twin bindings into one provider makes "open the file" a coin flip
   between windows — silently and confidently, the worst failure class this
   protocol exists to prevent.
-- **Grant by provider.** Consent, permissions, and every other durable
-  declaration attach to the provider identity, never to a binding. Granting by
-  binding either loses the grant on the next window — re-asking until the
-  answer is a reflex, which is *less* consent, not more — or invites widening
-  the grant until it is specific to nothing.
+- **Grant independently of binding.** Consent, permissions, and every other
+  durable declaration are policy facts and MUST NOT be keyed solely to an
+  ephemeral binding: per-window grants either evaporate on the next window —
+  re-asking until the answer is a reflex, which is *less* consent, not more —
+  or invite widening until they are specific to nothing. They attach to the
+  stable provider identity **within whatever authority context the host uses
+  to bound them** — user, account, tenant, device, installation. Trusting
+  `org.example.editor` once is never a grant to every account on every
+  machine; the representation of that context is host policy, outside this
+  protocol.
 
 The manifest declares the stable `provider` and nothing more: the binding
 discriminator is **transport-level** (the connection handshake), not manifest
@@ -346,6 +351,14 @@ Three invariants are frozen in v1:
    the host's decision, never the provider's convenience.
 3. References become invalid **explicitly** — by basis change — never by
    timeout alone.
+
+**Sibling bindings do not share references.** A non-persistent reference is
+minted by one binding (§1), and a host MUST retain that originating binding:
+equal provider identity never makes references from sibling bindings
+interchangeable — two windows of one editor can each hold a document whose
+internal id is `17`, and they are not the same "this". Whether *persistent*
+references may deliberately re-resolve across bindings is left open until a
+real provider needs it, rather than closed prematurely in either direction.
 
 **Two staleness mechanisms, never merged.** A reference basis answers *which
 object, in which editing state*; the optimistic precondition
