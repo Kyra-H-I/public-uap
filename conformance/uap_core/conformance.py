@@ -64,7 +64,7 @@ _VERSION_RE = re.compile(r"^1\.")
 #:
 #: The set is deliberately the exception list rather than the inclusion list, so a vector added
 #: later is treated as core until someone argues otherwise — the permissive default is how a
-#: nothing-addressable provider came to be graded Control-Ready in the first place.
+#: nothing-addressable provider came to be graded level A (verified semantic control) in the first place.
 CONDITIONAL_VECTORS: frozenset[str] = frozenset(
     {
         "action.preview",
@@ -241,7 +241,7 @@ async def run_core_conformance(provider: UapProvider) -> ConformanceReport:
         # report, and an exception escaping here took the whole run with it — including the
         # verdict a caller was going to act on. Every vector that needs state then grades against
         # an empty observation and skips, and because those skips are core the run cannot earn
-        # Control-Ready, which is the honest outcome for "we could not look".
+        # level A, which is the honest outcome for "we could not look".
         unreachable = f"{type(exc).__name__}: {exc}"
     except Exception as exc:  # noqa: BLE001 — same reasoning, for a provider that breaks instead
         unreachable = f"{type(exc).__name__}: {exc}"
@@ -443,7 +443,7 @@ def _vector_addressable_state(ctx: _Ctx) -> VectorResult:
     # Reported as a skip rather than a failure, because the suite sees one moment: "nothing is
     # focused right now" is a legitimate state, and the resolved design has a provider declare a
     # capability that is stable for the binding even when its target is momentarily absent. But
-    # the skip is CORE (see CONDITIONAL_VECTORS), so it withholds Control-Ready and names exactly
+    # the skip is CORE (see CONDITIONAL_VECTORS), so it withholds level A and names exactly
     # which target class went unproven — which is the honest answer to "we could not check".
     reachable = {obj.ref.lifetime for obj in ctx.observation.objects}
     reachable |= {
@@ -505,7 +505,7 @@ async def _vector_dry_run_never_executes(ctx: _Ctx) -> VectorResult:
         if ctx.manifest.features.preview:
             # A provider that CLAIMS preview has to make the claim checkable. Skipping here let a
             # provider which silently executes every `dry_run` collect a conditional skip — and
-            # conditional skips do not withhold Control-Ready — so the most dangerous direction of
+            # conditional skips do not withhold level A — so the most dangerous direction of
             # the feature was graded by nothing at all. Declaring a safety feature nothing can
             # verify is itself the finding.
             return VectorResult(
@@ -653,7 +653,7 @@ def _probe_action_for(ctx: _Ctx, available: tuple[str, ...]) -> tuple[str | None
 
     So there is no fallback. A provider with no read-only targeted action gets a FAILED
     ``invoke.stale_reference`` (see the caller) — "we could not check this safely" is a real
-    result and blocks Control-Ready, whereas sending a real email to find out is not a trade the
+    result and blocks level A, whereas sending a real email to find out is not a trade the
     suite gets to make on an adopter's behalf.
 
     The second return value is retained at ``False`` so the call shape stays explicit about never

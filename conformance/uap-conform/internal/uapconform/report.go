@@ -7,7 +7,7 @@ package uapconform
 // undo, has nothing for them to grade. An exception list rather than an inclusion list, on
 // purpose — a vector added later counts as core until someone argues otherwise, because the
 // permissive default is exactly how a provider that could be probed by nothing at all came to be
-// graded Control-Ready.
+// graded level A (verified semantic control).
 var conditionalVectors = map[string]bool{
 	"action.preview":    true,
 	"action.undo_claim": true,

@@ -2,7 +2,7 @@
 
 Usage: pip install ../../conformance && python run_conformance.py
 
-Exit code 0 when the run EARNS Control-Ready: nothing failed, and no core vector went
+Exit code 0 when the run EARNS assurance level A (verified semantic control): nothing failed, and no core vector went
 ungraded. A skip is not a pass — a provider that offers nothing addressable can be probed by
 nothing at all, and verdicting on "did anything fail" handed such a run a clean exit.
 Skips of the optional-feature vectors (preview, cancellation, an undo never claimed) are
