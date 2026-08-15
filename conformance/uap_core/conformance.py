@@ -64,7 +64,7 @@ _VERSION_RE = re.compile(r"^1\.")
 #:
 #: The set is deliberately the exception list rather than the inclusion list, so a vector added
 #: later is treated as core until someone argues otherwise — the permissive default is how a
-#: nothing-addressable provider came to be graded level A (verified semantic control) in the first place.
+#: nothing-addressable provider came to be graded level A in the first place.
 CONDITIONAL_VECTORS: frozenset[str] = frozenset(
     {
         "action.preview",
