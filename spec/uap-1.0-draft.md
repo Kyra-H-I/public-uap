@@ -13,13 +13,16 @@ golden vectors, conformance suite, and authoring skill it references are license
 
 ## Abstract
 
-UAP is an application-facing protocol that lets a host — a voice agent, or any
-conversational agent — observe and control an application through **declared
-semantics** rather than synthesized input: typed actions with declared effects,
-epoch-scoped references, bounded observation, honest verification and
-cancellation, and operation-scoped undo. It is designed so that the *application*
-states what is true and what an action does, while the *host* alone decides how
-much user agreement an action needs and what the user is told.
+UAP defines an **actor-neutral semantic control contract over live applications
+and devices**: it lets an actor — an AI agent, a human through a voice or
+accessibility interface, or plain deterministic software — observe and control
+an application through **declared semantics** rather than synthesized input:
+typed actions with declared effects, epoch-scoped references, bounded
+observation, honest verification and cancellation, and operation-scoped undo.
+It is designed so that the *application* states what is true and what an action
+does, while the *host* alone decides how much user agreement an action needs
+and what the user is told. Nothing in the contract assumes the caller is a
+model; an AI host is the motivating case, not a protocol dependency.
 
 The protocol has two implementation routes with identical observable semantics: a
 **native provider** inside the application, and an **adapter** — ordinary typed
@@ -41,9 +44,12 @@ watch being false.
 
 UAP's position: the durable abstraction is the **meaning inside the
 application** — the open document, the selected objects, the available
-operations, the command result, the undo boundary. Pixels and synthetic input
-remain the universal fallback, at an honestly disclosed lower assurance, never
-the target.
+operations, the command result, the undo boundary. The aim is not an actor
+that imitates a human using software, but software that can be **driven**: the
+caller requests a meaningful operation — rename this symbol, send this draft,
+set this temperature — and the application remains responsible for how it is
+performed. Pixels and synthetic input remain the universal fallback, at an
+honestly disclosed lower assurance, never the target.
 
 ## Design principles
 
@@ -55,7 +61,10 @@ the target.
    discovery, identity, state, invocation, results, effects, events,
    verification, and transactions. Domain vocabulary stays namespaced and
    versions independently; the protocol does not flatten CAD, documents, and
-   code into one lowest-common-denominator verb set.
+   code into one lowest-common-denominator verb set. The admission question
+   for any core candidate: *is this something every driver of every
+   application needs, or something this application knows?* Only the former
+   belongs in core.
 4. **Observe, act, verify.** A dispatched action is not successful because input
    was sent. "Completed" requires evidence; endings that cannot be observed say
    so by declaration.
@@ -128,16 +137,24 @@ Normative requirements:
 - **Discovery is cheap and deterministic.** The manifest carries capability
   *ids* and action *names* only. Full action descriptors — typed arguments,
   preconditions, effects, usage guidance — are fetched **per capability, on
-  demand**. Rationale: anything advertised to a model is paid for on every
-  conversational turn for the life of a session; a provider with forty actions
-  must not put forty schemas in front of a user who asked to open a note.
+  demand**. Rationale: bounded discovery keeps the cost of a session
+  independent of the size of the application's surface — a provider with forty
+  actions must not put forty schemas in front of a user who asked to open a
+  note. Today the concrete bill is model context (anything advertised to a
+  model is paid for on every conversational turn for the life of a session),
+  but the requirement is deliberately not tied to that era's economics:
+  efficiency is a protocol property, and abundance of any one resource is
+  never a reason to waste it.
 - **Discovery resolves to a durable session fact.** The capability set is
   established from durable facts (application, account, device, granted
   permissions) at bind time — never re-derived per turn from a guess about what
   the user might ask next.
-- **An action the provider cannot currently perform is absent, not
-  present-and-failing.** Discovery is shaped by live device, account, and
-  permission state.
+- **An action is absent from discovery only for a binding-stable,
+  target-independent reason** — the account lacks the feature, a permission was
+  never granted, the build does not ship it. Absence never encodes transient
+  state: "the vehicle is moving" or "no document is open" is a runtime
+  precondition that fails with a typed result, not a reason for the manifest to
+  churn (the boundary test is *What belongs in a manifest at all*, below).
 - **Features default to absent.** A provider gets no credit for machinery it
   did not declare; the failure direction is a confirmation the user did not
   need, never a skipped one they did.
@@ -198,8 +215,9 @@ modes:
    regardless of application size.
 
 > **Status:** grouped discovery and `capability_query` are **specified ahead of host
-> execution**. A provider may declare them and the schema is frozen, but a conforming
-> host is only required to implement enumerated discovery in this draft. Asking costs a
+> execution**. A provider may declare them and the schema is published (provisional —
+> see *Status of this draft*), but a conforming host is only required to implement
+> enumerated discovery in this draft. Asking costs a
 > model turn, so the rule is: enumerate if it fits, group if it does not, ask for the tail.
 
 #### Public discovery at the origin
@@ -263,7 +281,8 @@ The normative rules:
   attacker infrastructure.
 
 > **Status:** specified ahead of host execution, as with grouped discovery above. The two
-> documents and the invariants binding them are frozen, but a conforming host is not required
+> documents and the invariants binding them are published (provisional — see *Status of
+> this draft*), but a conforming host is not required
 > to implement a fetch path in this draft, and no conformance vector grades one. The `uap`
 > well-known suffix is to be registered provisionally under RFC 8615.
 
@@ -314,7 +333,7 @@ Observation accepts **scopes** (`view`, `focus`, `selection`, `document`,
 `objects`) so a caller asking less pays less.
 
 **Query algebra (interchange schema, published ahead of execution).** The draft
-freezes one composition algebra — `and` / `or` / `not` over typed predicates,
+publishes one composition algebra — `and` / `or` / `not` over typed predicates,
 with a core predicate set (`ref.eq`, `type.is`, `rel.of`, `prop.cmp`,
 `text.range`, `text.contains`, `view.visible`, `symbol.matches`) and declared
 bounds — so that independent implementations cannot invent incompatible
@@ -450,7 +469,7 @@ action is irreversible for policy purposes.
 
 ### §8 Workflow interchange (plans)
 
-The draft also freezes the interchange shapes for **plans** — host-executed,
+The draft also publishes the interchange shapes for **plans** — host-executed,
 bounded, guarded straight-line sequences of action calls (no loops, no
 branching beyond guard-skip: the model is the loop) with typed reference slots
 between steps and per-step reversibility reporting. As with queries, these are
@@ -459,7 +478,9 @@ plan execution is not yet on the conformance surface.
 
 ## Efficiency requirements
 
-Efficiency is a protocol requirement, not an optimization left for later:
+Efficiency is a protocol requirement, not an optimization left for later — and
+deliberately era-independent: abundance of context, compute, or bandwidth is
+never a reason to waste it:
 
 - local-first transport; no mandatory network service or cloud hop;
 - one capability negotiation per bind, cacheable by digest;
@@ -528,13 +549,18 @@ provider over line-delimited JSON with the same vectors and report shape.
 Assurance levels are descriptive, version-specific, earned by evidence, and
 **never pay-to-pass**:
 
-| Level | Surface | Host behaviour |
+| Level | Guarantee | Host behaviour |
 |---|---|---|
-| **A — Control Ready** | Passes full semantic, safety, documentation, and behavioural conformance | Preferred path, least avoidable confirmation friction |
-| **B — API Connected** | Useful provider/adapter with disclosed gaps | Semantic path with compensating reads and stricter policy |
-| **C — Accessible** | Generic browser/OS accessibility semantics only | No application-domain guarantees |
-| **D — Visual Legacy** | Pixels and synthetic input | Best-effort, visibly low assurance, frequent re-observation |
+| **A — Verified semantic control** | Passes full semantic, safety, documentation, and behavioural conformance | Preferred path, least avoidable confirmation friction |
+| **B — Partial semantic control** | Useful semantic provider/adapter with disclosed gaps | Semantic path with compensating reads and stricter policy |
+| **C — Structural control** | Generic structural semantics only (browser/OS accessibility grade) | No application-domain guarantees |
+| **D — Observed-input control** | Inference over pixels and synthetic input | Best-effort, visibly low assurance, frequent re-observation |
 
+Levels name **guarantees, never technology**: a well-built adapter over a
+first-class API can earn A, and a native provider can fail to. Origin (§1)
+stays orthogonal provenance and is never read as a level — though evidence
+quality still sets a floor: control *inferred* from observation of pixels can
+inform, but cannot verify, so it cannot demonstrate what A–C require.
 Implementations receive a machine-readable report naming the exact gaps between
 them and the next level.
 
@@ -569,6 +595,22 @@ providers actually make, and the conformance run that grades the result. The
 worked example (`examples/minimal/`) is executable and kept green by the
 suite — an example that cannot rot.
 
+## Domain profiles — future work, non-normative
+
+The core standardizes how an actor drives semantics; it deliberately does not
+standardize the semantics applications expose. Two mail clients can both
+conform while naming their send action differently — a model reads the
+descriptors and copes, but deterministic interoperability stops at the
+envelope. The intended remedy, once real providers exist to ground it, is
+**domain profiles**: optional sub-specifications layered above the core
+(`documents`, `messaging`, `calendar`, `filesystem`, `media`, `automotive`,
+`smart-home`, …), each fixing shared vocabulary — what `message`, `recipient`,
+`draft`, `reply`, and `send` mean for any provider claiming the profile. A
+profile is shared vocabulary, never mandatory capability parity, and profiles
+will be distilled from reference implementations rather than designed ahead of
+them. None ships in this draft; this section exists so the layering is a
+declared direction rather than a retrofit.
+
 ## Security and trust properties
 
 - **Application content and vendor documentation are untrusted data.** Text
@@ -579,6 +621,18 @@ suite — an example that cannot rot.
 - **A provider cannot self-authorize.** It declares; the host derives. It
   cannot approve actions, choose confirmation classes, claim unearned
   reversibility, or upgrade its own assurance.
+- **The trust boundary, stated exactly.** The host never treats a provider's
+  assertions as authorization or as sufficient proof of effects: acceptance is
+  not completion, declarations do not choose consent, and completion is
+  verified by observation. But observation reaches the application *through
+  the same provider* — a provider is the host's semantic window into its
+  application, and one that lies **coherently** (about declared effects, about
+  observed state) is not detectable on this wire. Conformance establishes
+  behavioural consistency, never semantic truthfulness. The protocol's
+  guarantee is therefore the narrower, honest one: an honest-but-fallible
+  provider is never trusted beyond what it can demonstrate. Defence against a
+  *malicious* provider lives in packaging, review, and registry policy (next
+  bullet) and in host-side caps on unverified assurance.
 - **Message hygiene is mandatory both directions:** schema validation, size and
   depth bounds, fail-closed parsing of unknown vocabulary, reply-type
   validation, and replay-safe command identity.
@@ -654,8 +708,14 @@ desktop editor; strict atomic call decoding with machine-repairable
 Schema-only in this draft (shared grammar published ahead of execution): the
 query algebra and plan envelopes (§3, §8), grouped capability discovery,
 `features.capability_query`, and public discovery at the origin (§1). A provider
-may declare or serve these and the shapes are frozen, but a conforming host is
-not required to execute or fetch them yet.
+may declare or serve these, but a conforming host is not required to execute or
+fetch them yet — and their stability is labelled by one rule: **a shape is
+frozen only once runtime conformance exercises it; every schema-only surface
+above is provisional and may change before the draft label drops.** They are
+published early so independent implementations share one grammar instead of
+forking it, not as a stability promise that implementation experience has not
+yet earned. (The §2 reference invariants, by contrast, *are* frozen — the
+conformance suite exercises them today.)
 
 ### Known gaps — read this before implementing
 
@@ -692,6 +752,14 @@ most useful contribution this draft can receive.
    in lower case it means the same thing as upper case; the distinction is not yet
    used consistently, and §5's verification requirement in particular is stated at
    different strengths here, in the authoring skill, and in the vocabulary.
+6. **No cross-provider data plane.** A reference is provider-relative, and large
+   payloads deliberately stay behind provider-local handles — so nothing yet
+   specifies what crosses the boundary when one provider's artifact becomes
+   another's input ("take this render, insert it into the document, mail the
+   PDF"). Small text can legitimately travel through the model's own context; a
+   content-handle mechanism for everything else — large, binary,
+   fidelity-critical, or private payloads — is a named design question under
+   scenario testing, deliberately not designed in this draft.
 
 Also not yet specified: cross-turn command-terminal events (§5), and the
 standing-consent and workflow-reuse layers sketched by the adopted amendments —

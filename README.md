@@ -1,7 +1,13 @@
 # UAP — Universal Application Protocol
 
+**UAP lets humans and AI drive applications and devices.**
+
 Hi. I'm [Kyra](https://kyra-hi.com), a voice agent, and this is the protocol I
-use to operate applications so that you don't need your keyboard and mouse anymore.
+use to drive yours — so you don't need your keyboard and mouse anymore. Not
+"an AI pretending to be a human at the controls": instead of clicking line 42,
+opening a context menu and choosing Rename, I say **rename this symbol**.
+Instead of hunting for the Send button: **send this draft**. The application
+stays in charge of *how*; I only have to be right about *what*.
 
 Here's my problem. You say *"append 'buy milk' to the shopping note."* (or perhaps
 a bit more productive: *"open and modify this presentation for me."*)  
@@ -94,7 +100,12 @@ Three kinds of line. Solid arrows point the way authority flows — only ever
 down. Dashed arrows are what comes back up — declarations, evidence, my
 reports — which the layer above judges rather than trusts. The double-headed
 edges are the conversation through the plug itself: four provider forms, one
-contract. You trust the host; the host trusts no provider.
+contract. You trust the host; the host treats everything a provider says as a
+claim to check — never as authorization, never as proof it happened. (Full
+honesty, because it's the whole pitch: a provider is my only semantic window
+into its app, so one that lies *coherently* — about what an action touches,
+about what it observed — is a packaging-and-review problem, not something any
+wire protocol detects. I'd rather tell you that than pretend otherwise.)
 Providers *declare* — "this action writes, and here is its undo" — and the
 host *derives and verifies*: it classifies the effect, asks you when the
 class demands it, and re-observes before ever saying "done". The four forms
@@ -103,7 +114,9 @@ on the bottom row are one role in different clothes; they differ only in
 Two footnotes in the spirit of honesty: my web and mobile providers ride my
 existing authenticated transports instead of the desktop bridge — same
 contract, shorter wire — and nothing in the contract makes me special: any
-conforming agent can be a host.
+conforming agent can be a host. Nothing in it even requires an AI — a human
+front-end, an accessibility system, or plain deterministic software can drive
+the same plug. I'm the motivating case, not a dependency.
 
 ## "Isn't this just MCP?"
 
@@ -144,6 +157,13 @@ registry instead of listing five thousand commands at me.
 So: **MCP to give an agent tools. UAP to give an agent an application.** If
 you're building the former, genuinely — go use MCP. I'm here for the latter.
 
+Same spirit for the platform capability surfaces arriving everywhere — Apple
+App Intents, Android AppFunctions, Windows App Actions, WebMCP: excellent
+news, and not competition. Each is a **route into an application**, exactly
+the thing a UAP adapter wraps. They give apps semantic handles; UAP is the
+control contract above them — the part that knows which object you meant,
+what changed while you were talking, and whether it can be undone.
+
 ## What's in the box
 
 | | |
@@ -166,9 +186,10 @@ python examples/minimal/run_conformance.py   # 14 vectors: 13 pass, 1 skip → e
 This is not a paper protocol: the core contract is implemented by my own web, 
 mobile, and desktop-editor providers, and CI runs the conformance suite against 
 them on every change to the protocol or any of those providers. 
-The query algebra and plan envelopes ship as frozen interchange schema *ahead* 
-of their execution semantics, so independent implementations can't fork the grammar. 
-Expect breaking changes until the label drops;  
+The query algebra and plan envelopes ship as *provisional* interchange schema 
+*ahead* of their execution semantics — published early so independent 
+implementations don't fork the grammar, frozen only once conformance exercises 
+them. Expect breaking changes until the label drops;  
 `manifest.uap` fails closed on a major mismatch.
 
 What I have **not** finished is written down rather than left for you to discover:
