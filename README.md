@@ -60,7 +60,10 @@ Every UAP exchange has exactly two roles, and they never blur:
   what's open, here's what I can do") and executes when asked. It can be the
   app itself speaking UAP natively, an extension living inside it, or an
   adapter wrapped around whatever API the app already has. Same contract
-  either way; one provider per application.
+  either way — and an application may be served by more than one route at
+  once (a native provider for the document, accessibility for its file
+  dialog); the host picks the best route per operation, and asks *you* by
+  name when two genuinely tie.
 - **The host is my side — the conscience.** It holds *your* authority and
   makes every judgment call: which provider gets an action, whether to ask
   you first, whether the thing verifiably happened, what lands in the audit
@@ -83,7 +86,7 @@ flowchart TD
 
     PLUG(["the UAP contract — one plug:<br/>observe · act · verify · undo"])
 
-    subgraph PROVIDERS["PROVIDERS — the application's side, one per app · assurance: high → low"]
+    subgraph PROVIDERS["PROVIDERS — the application's side · four ways in, by provenance · assurance is earned per implementation"]
         NATIVE["NATIVE<br/>the app itself<br/>speaks UAP"]
         EXT["ADD-ON / EXTENSION<br/>living inside<br/>the app"]
         ADAPTER["ADAPTER<br/>beside the app, over<br/>the API it already has"]
@@ -109,8 +112,10 @@ wire protocol detects. I'd rather tell you that than pretend otherwise.)
 Providers *declare* — "this action writes, and here is its undo" — and the
 host *derives and verifies*: it classifies the effect, asks you when the
 class demands it, and re-observes before ever saying "done". The four forms
-on the bottom row are one role in different clothes; they differ only in
-**assurance**, which is earned through the conformance suite, never declared.
+on the bottom row are one role in different clothes; they differ in
+**provenance** — how they get into the app — while **assurance** is earned
+per implementation through the conformance suite, never declared and never
+read off the row: a careful adapter can outrank a sloppy native provider.
 Two footnotes in the spirit of honesty: my web and mobile providers ride my
 existing authenticated transports instead of the desktop bridge — same
 contract, shorter wire — and nothing in the contract makes me special: any

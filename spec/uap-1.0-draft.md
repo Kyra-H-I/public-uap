@@ -19,17 +19,21 @@ accessibility interface, or plain deterministic software — observe and control
 an application through **declared semantics** rather than synthesized input:
 typed actions with declared effects, epoch-scoped references, bounded
 observation, honest verification and cancellation, and operation-scoped undo.
-It is designed so that the *application* states what is true and what an action
-does, while the *host* alone decides how much user agreement an action needs
-and what the user is told. Nothing in the contract assumes the caller is a
-model; an AI host is the motivating case, not a protocol dependency.
+It is designed so that the *provider* reports application state and declares
+what its actions do, while the *host* alone decides how much user agreement an
+action needs and what the user is told. Nothing in the contract assumes the
+caller is a model; an AI host is the motivating case, not a protocol
+dependency.
 
-The protocol has two implementation routes with identical observable semantics: a
-**native provider** inside the application, and an **adapter** — ordinary typed
-code mapping the application's existing documented API into the same contract. A
-host cannot tell which it got, apart from provenance and assurance metadata. That
-invariant makes the adapter a migration path rather than a competing
-architecture.
+A provider may be native to the application or may **mediate** an existing
+surface — a documented API, a browser or accessibility tree, or, as the last
+resort, pixels and synthetic input. Every route obeys the same observable
+contract: a host need not treat native and mediated implementations differently
+at the control-contract level. Provenance stays visible, while assurance is
+established independently through conformance evidence — never read off the
+wire. That invariant makes mediation a migration path rather than a competing
+architecture, and an application may be served by more than one route at once,
+composed per operation (§Architecture).
 
 ## Motivation
 
@@ -55,8 +59,9 @@ honestly disclosed lower assurance, never the target.
 
 1. **Meaning before pixels.** Prefer document/object/action semantics over
    coordinates and gestures.
-2. **One contract, two routes.** Native providers and adapters obey the same
-   observable semantics and the same conformance suite.
+2. **One contract, many routes.** Native providers and mediating
+   implementations — API adapters, accessibility bridges, input synthesis —
+   obey the same observable semantics and the same conformance suite.
 3. **Small universal core, rich domain capabilities.** The core standardizes
    discovery, identity, state, invocation, results, effects, events,
    verification, and transactions. Domain vocabulary stays namespaced and
@@ -520,8 +525,10 @@ vectors):
   object graph without dumping it.
 - **Domain depth without core bloat** — namespaces carry units, constraints,
   and topology while the core stays fixed.
-- **Cross-provider reference passing** — the reference and permission model
-  must not preclude document-to-document workflows across applications.
+- **Cross-provider artifact/resource passing** — the reference and permission
+  model must not preclude document-to-document workflows across applications.
+  Ordinary references stay provider-relative and are not the carrier; what
+  crosses the boundary is the open data-plane question named in Known Gaps.
 - **Honest reversibility at scale** — in a large batch, reversibility is
   reported per operation, never collapsed into one optimistic flag.
 
