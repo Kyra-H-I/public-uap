@@ -25,7 +25,7 @@ import (
 	"os/exec"
 	"time"
 
-	"github.com/Kyra-H-I/public-uap/conformance/uap-conform/internal/uapconform"
+	"github.com/Kyra-H-I/uap-spec/conformance/uap-conform/internal/uapconform"
 )
 
 func main() {

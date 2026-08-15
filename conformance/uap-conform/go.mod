@@ -1,3 +1,3 @@
-module github.com/Kyra-H-I/public-uap/conformance/uap-conform
+module github.com/Kyra-H-I/uap-spec/conformance/uap-conform
 
 go 1.23
