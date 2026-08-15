@@ -60,11 +60,13 @@ what happens when the page underneath a binding simply ceases to exist.
    addressed by provider id alone become a coin flip, and "the" tab is
    ambiguous in a way `ambiguous` (equal-assurance *different* providers)
    does not capture — these are two live **sessions of one application**.
-   The protocol needs provider identity to be session-granular, with the
-   host free to qualify identities and route deliberately. **Finding
-   F-004** — independently confirmed by field experience with two desktop
-   editor windows, which is exactly the two-unrelated-domains bar a
-   promotion needs.
+   The protocol needs a first-class split: the provider identity stays the
+   stable application identity, and each live session is a distinct
+   **binding**, discriminated at transport level — route by binding, grant
+   by provider, never two pseudo-provider ids. **Finding F-004** —
+   independently confirmed by field experience with two desktop editor
+   windows, which is exactly the two-unrelated-domains bar a promotion
+   needs; now specified in §1 of the spec.
 
 ## Where it strains
 

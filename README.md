@@ -39,15 +39,17 @@ The parts I rely on:
   I never guess at whatever happens to be focused now.
 - **Verified endings.** `completed` requires evidence. And when an outcome
   genuinely cannot be observed — I launched your dialer; I cannot hear whether
-  the call connected — the action *declares* that, and I say "sent it, can't
-  confirm" instead of inventing an ending in either direction.
+  the call connected — the action *declares* that, and I say "started the
+  call — can't confirm it connected" instead of inventing an ending in either
+  direction.
 - **Deterministic over generative.** If your editor can rename a symbol
   exactly, I invoke *that*. I don't improvise forty edits and call it a
   rename.
 
 Why bother: we're working toward a new way of interacting with machines — you
-say what you want, software does it exactly, and everything is visible and
-reversible. A world where the keyboard and mouse go the way of the command
+say what you want, software does it exactly, what can be observed is shown,
+what can be undone is undoable — and what can't be either is *said out loud*,
+never papered over. A world where the keyboard and mouse go the way of the command
 line: still there, still respected, but no longer the primary thing needed to 
 interact with a computer. That world needs a standard plug every application 
 can offer; a Universal Application Protocol.

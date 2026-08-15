@@ -185,6 +185,39 @@ document is currently open" is target-free but *not* stable, so gating a capabil
 it strands the binding the moment the user opens or closes a file. That is a
 precondition, and §5 is where preconditions belong.
 
+#### Provider identity is not binding identity
+
+`provider` names the **application integration** — a stable reverse-DNS identity
+(`org.example.editor`) that is the same across every machine, window, and
+session. It is what durable facts attach to: conformance evidence, provenance,
+registry trust, permission grants, declared sensitivity.
+
+A **binding** is one live session of that provider — this window, on this
+machine, now. Two editor windows are one provider and two bindings; so are two
+workbooks, two browser windows, two phones running the same client. The
+distinction is load-bearing in both directions:
+
+- **Route by binding.** Addressing, dispatch, staleness, cancellation, events —
+  every question of the form *"which one am I talking to"* resolves a binding.
+  Collapsing twin bindings into one provider makes "open the file" a coin flip
+  between windows — silently and confidently, the worst failure class this
+  protocol exists to prevent.
+- **Grant by provider.** Consent, permissions, and every other durable
+  declaration attach to the provider identity, never to a binding. Granting by
+  binding either loses the grant on the next window — re-asking until the
+  answer is a reflex, which is *less* consent, not more — or invites widening
+  the grant until it is specific to nothing.
+
+The manifest declares the stable `provider` and nothing more: the binding
+discriminator is **transport-level** (the connection handshake), not manifest
+vocabulary, and a provider that announces no discriminator has exactly one
+binding and behaves as before. Hosts may qualify and display bindings however
+serves the user — who addresses sessions by what is *in* them ("the budget
+one", "the container window"), never by application id. Disambiguating twin
+bindings is ordinary target resolution against the host's working context,
+asked out loud only as the cold case — it is *not* the `ambiguous` error,
+which names rival providers at equal assurance.
+
 #### `scope` — session manifest or public catalog
 
 `scope` distinguishes the two documents that share this schema:

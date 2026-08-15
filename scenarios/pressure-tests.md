@@ -45,12 +45,13 @@ Markers:
 
 ## What the matrix already says
 
-- **Four rows are uncovered everywhere**: deep query, transaction/atomic batch,
-  and (until their scenarios land marks) structured partial failure and
-  long-running work have no ● at all. That matches the draft's own stability
-  labelling — the query algebra and transactions are provisional precisely
-  because nothing exercises them — and it is why those shapes must not freeze
-  yet.
+- **Four rows lack live (●) coverage**: deep query, transaction/atomic batch,
+  structured partial failure, and long-running work. Of those, deep query and
+  transaction/atomic batch are entirely uncovered — not even a paper walk —
+  while structured partial failure and long-running work have paper-scenario
+  (○) coverage only. That matches the draft's own stability labelling — the
+  query algebra and transactions are provisional precisely because nothing
+  exercises them — and it is why those shapes must not freeze yet.
 - **The editor column is the calibration control.** Its marks trace mechanics
   the reference implementation already runs live; strain in other columns is
   measured against it.
