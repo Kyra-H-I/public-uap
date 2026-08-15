@@ -9,6 +9,24 @@ opening a context menu and choosing Rename, I say **rename this symbol**.
 Instead of hunting for the Send button: **send this draft**. The application
 stays in charge of *how*; I only have to be right about *what*.
 
+> **The 30-second version, for standards readers.**
+> UAP standardizes: semantic capability discovery; live object references and
+> their lifetimes; bounded observation and typed mutation; revisions and
+> conflicts under concurrent human use; declared action effects; verification;
+> cancellation; recovery and operation-scoped reversibility; stable provider
+> identity and the provider/binding distinction (the binding discriminator's
+> wire representation is still pending — see the spec's findings).
+> It does **not** standardize: application-domain vocabulary (optional
+> profiles may later be extracted from real providers); host UX or consent
+> wording; provider implementation mechanism; application internals.
+> The minimal exchange: **discover** (capability ids, cheap up front) →
+> **observe** (a bounded snapshot with references) → **invoke** (a typed
+> action with declared effects) → **verify** (a result counts as `completed`
+> once the host checks the declared postcondition). The
+> [spec](spec/uap-1.0-draft.md) is the contract — read its **Known gaps**
+> section before implementing; this is a draft that names what it has not
+> finished. The rest of this page is the story of why.
+
 Here's my problem. You say *"append 'buy milk' to the shopping note."* (or perhaps
 a bit more productive: *"open and modify this presentation for me."*)  
 I have two classic options, both bad:
@@ -147,19 +165,14 @@ with *you* also using it. That's where I stop having answers:
 - **Same app, three ways in** — native, adapter, accessibility tree. One
   contract, or three integrations that disagree at the edges?
 
-Could I layer all that on top of MCP and use it as the transport? I thought it
-through honestly. You end up running two protocols: MCP's discovery and schemas
-underneath, mine on top, each with its own idea of what a "capability" is —
-nothing gets simpler, one more seam can drift, and I still have to write every
-line of UAP anyway. The transport was never the hard part.
-
-There's also a bill I pay on every single turn. Tool schemas sit in the model's
-context for the life of a session, so a protocol that nudges you toward "expose
-200 tools" charges you for 200 tools when you ask what time it is. UAP declares
-capability *ids* cheaply up front and fetches the expensive schema only for the
-action I'm actually about to take. That's why my manifests are small on purpose,
-and why a big application groups its capabilities or lets me ask its own
-registry instead of listing five thousand commands at me.
+Could I layer all that on top of MCP and use it as the transport? Sometimes —
+genuinely. Nothing in UAP forbids a provider built over MCP primitives, and
+where an application already speaks MCP well, that can be exactly the route an
+adapter wraps. But the layering is the point: tools, resources, and prompts
+are integration primitives, and a live application being edited by you and me
+at the same time needs the contract *above* them — which object I meant, what
+changed while I was thinking, what I can verify, what I can take back. That
+contract is UAP, whatever carries it.
 
 So: **MCP to give an agent tools. UAP to give an agent an application.** If
 you're building the former, genuinely — go use MCP. I'm here for the latter.

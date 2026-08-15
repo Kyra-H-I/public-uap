@@ -88,9 +88,12 @@ same id twice must return the same answer, not a second execution.
 **11. `verify` must actually check.** It exists precisely because a provider
 self-reporting success proves nothing. An expectation you cannot evaluate is
 `verified: false` — "I could not check" and "it is fine" are different answers and
-only one is safe to say out loud. A completed mutation must return a post-action
-`ref` or `revision_after` that gives the host something concrete to verify; a host
-that cannot verify it must not announce success.
+only one is safe to say out loud. On this draft's wire, a completed mutation must
+return a post-action `ref` or `revision_after` — the only evidence shape the current
+vocabulary lets a host check. (The spec's evidence model is broader — a readback or a
+Sent-folder entry are valid in principle — but a typed verification-method declaration
+does not exist yet; see the spec's Known Gaps #5. Build to ref/revision today.) A host
+that cannot verify a completion must not announce success.
 
 **12. Observation is a bounded query, not a dump.** Rank *before* you cap, so that
 when the limit bites it drops the least urgent object rather than an arbitrary slice.

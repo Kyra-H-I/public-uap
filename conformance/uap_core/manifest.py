@@ -145,11 +145,13 @@ class ManifestScope(StrEnum):
     """What *this* user can do right now. Shaped by device, account, permissions, flags."""
 
     PUBLIC = "public"
-    """What the deployment can *ever* do — the unscoped superset served pre-auth.
+    """The deployment's curated pre-binding projection, served pre-auth.
 
-    Bound by ``bound ⊆ public``: a capability that appears at bind but not here is drift
-    or a dishonest provider. The reverse is ordinary — no permission, wrong plan, feature
-    off — which is why this can never be read as a grant of anything.
+    Deliberately allowed to advertise *less* than a binding offers (publication is
+    opt-in per capability), so no containment holds in either direction: a bound
+    capability may be unadvertised, an advertised one absent at bind. The bound
+    manifest is authoritative; this can never be read as a grant of anything.
+    (The former ``bound ⊆ public`` invariant is withdrawn — spec F-013.)
     """
 
 
@@ -465,33 +467,6 @@ class ProviderManifest:
             if action in cap.actions:
                 return cap
         return None
-
-    def exceeds(self, public: ProviderManifest) -> tuple[str, ...]:
-        """What this manifest offers that ``public`` never advertised — the drift signal.
-
-        The executable form of ``bound ⊆ public`` (spec §Manifest and capability discovery).
-        A bound manifest offering *less* than the catalog is ordinary: no permission, wrong
-        plan, feature disabled. Offering *more* means the catalog is stale or the provider is
-        lying about itself, and either way the host wants to know rather than quietly widen
-        what it will drive.
-
-        Containment is asserted at *group* level for a deferred capability, because a grouped
-        or queryable catalog deliberately does not list its actions — demanding action-level
-        containment there would make the invariant unenforceable exactly where it matters most.
-
-        Returns capability ids and ``capability/action`` pairs, empty when contained.
-        """
-        by_id = {cap.id: cap for cap in public.capabilities}
-        drift: list[str] = []
-        for cap in self.capabilities:
-            advertised = by_id.get(cap.id)
-            if advertised is None:
-                drift.append(cap.id)
-                continue
-            if advertised.deferred:
-                continue
-            drift.extend(f"{cap.id}/{a}" for a in cap.actions if a not in advertised.actions)
-        return tuple(drift)
 
     def to_dict(self) -> dict[str, Any]:
         return {

@@ -63,7 +63,8 @@ what happens when the page underneath a binding simply ceases to exist.
    The protocol needs a first-class split: the provider identity stays the
    stable application identity, and each live session is a distinct
    **binding**, discriminated at transport level — route by binding, grant
-   independently of binding, never two pseudo-provider ids. **Finding F-004** —
+   independently of binding (within the host's authority context), never two
+   pseudo-provider ids. **Finding F-004** —
    independently confirmed by field experience with two desktop editor
    windows, which is exactly the two-unrelated-domains bar a promotion
    needs; now specified in §1 of the spec.

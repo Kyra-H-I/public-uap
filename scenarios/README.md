@@ -19,10 +19,13 @@ three conclusions:
   reference implementation already exercises, so strain elsewhere is measured
   against something known to hold.)
 - **Walking a scenario never changes the specification.** Strain lands in the
-  findings register; a finding is promoted into a spec change only when several
-  scenarios — or a scenario plus live host experience — make the same case.
-  This is the safeguard against speculative standards architecture: primitives
-  are earned, not invented.
+  findings register; a *new primitive* is promoted into a spec change only when
+  several sources — scenarios, live host experience, external review — make the
+  same case from unrelated directions. A *demonstrated internal contradiction*
+  is a bug and may be corrected on a single source, with a register row
+  recording the correction (see the register's own header). This is the
+  safeguard against speculative standards architecture: primitives are earned,
+  not invented.
 - **The recurring test question:** every time a walk forces application-specific
   logic into the *host*, that is a warning; every time the provider can solve it
   inside its own domain namespace, the abstraction is working.

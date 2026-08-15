@@ -190,12 +190,21 @@ precondition, and §5 is where preconditions belong.
 `provider` names the **application integration** — a stable reverse-DNS identity
 (`org.example.editor`) that is the same across every machine, window, and
 session. It is what durable facts attach to: conformance evidence, provenance,
-registry trust, permission grants, declared sensitivity.
+registry trust, permission grants (within the host's authority context — see
+below), declared sensitivity.
 
-A **binding** is one live session of that provider — this window, on this
-machine, now. Two editor windows are one provider and two bindings; so are two
-workbooks, two browser windows, two phones running the same client. The
-distinction is load-bearing in both directions:
+A **binding** is one live attachment through which a provider serves this
+contract — this window, on this machine, now, each holding its own
+attachment. Two editor windows each holding one are one provider and two
+bindings; so are two browser windows, or two phones running the same client.
+(Whether one transport connection may announce several bindings is part of
+the discriminator's pending wire representation — F-004.) A binding is *not*
+object identity: several documents open in one window are **targets** inside
+one binding, addressed through references — a workbook, tab, or scene is a
+separate binding only when the provider actually serves it through a
+separate attachment. The hierarchy is `provider → binding →
+targets/references`, and the **provider/binding boundary** is load-bearing
+in both directions:
 
 - **Route by binding.** Addressing, dispatch, staleness, cancellation, events —
   every question of the form *"which one am I talking to"* resolves a binding.
@@ -229,15 +238,19 @@ which names rival providers at equal assurance.
 
 - `session` (the default, and what an absent `scope` means) — what *this* binding can
   do: shaped by device, account, permissions, and feature state.
-- `public` — a deployment's **unscoped superset**, suitable for serving pre-authentication
-  so a host can discover that an application speaks UAP at all.
+- `public` — a deployment's **curated pre-binding projection**, suitable for serving
+  pre-authentication so a host can discover that an application speaks UAP at all.
 
 A public catalog is a claim about the deployment, not a grant: it never carries an
 assurance level or a confirmation class, and a host assigns both exactly as it does for
-any other provider. The binding invariant is **`bound ⊆ public`** — a session manifest
-may offer *less* than the catalog (no permission, feature disabled), and offering *more*
-is drift. For a capability that declares its size rather than its members, containment
-is asserted at capability level.
+any other provider. The catalog may deliberately advertise *less* than a binding can
+do — publication is opt-in per capability, and a deployment may keep most of its
+surface behind authentication. **The bound manifest is authoritative for the active
+binding**; a capability appearing at bind that the catalog never advertised is
+ordinary, not drift. Dishonesty runs the other way: a catalog advertising a capability
+the deployment can never provide to anyone. (An earlier draft required
+`bound ⊆ public`; withdrawn — it contradicted curation, making every
+behind-authentication capability a violation.)
 
 #### Large surfaces: enumerate, group, or ask
 
@@ -305,18 +318,32 @@ The normative rules:
   and is otherwise the same schema, so one parity gate and one set of conformance vectors
   cover both. A separately specified public format drifts against the bound one within two
   releases.
-- **`bound ⊆ public`.** The catalog is the unscoped superset — what this deployment can ever
-  do — while the bound manifest is what *this* session can do now. A capability present at
-  bind but absent from the catalog is drift or a dishonest provider. A catalog capability
-  absent at bind is ordinary: no permission, wrong plan, feature disabled.
-- **The catalog is a curated projection, not a dump.** Publication is opt-in per capability;
-  an application may expose six capabilities publicly and keep two hundred behind
-  authentication. Unauthenticated enumeration of every consequential action is a
-  reconnaissance gift, and the answer is curation rather than obscurity.
+- **The bound manifest is authoritative; the catalog is a curated projection, not a
+  dump.** Publication is opt-in per capability: an application may expose six
+  capabilities publicly and keep two hundred behind authentication — unauthenticated
+  enumeration of every consequential action is a reconnaissance gift, and the answer is
+  curation rather than obscurity. A capability appearing at bind that the catalog never
+  advertised is therefore ordinary; the dishonest direction is a catalog advertising
+  what the deployment can never provide. A catalog capability absent at bind is equally
+  ordinary: no permission, wrong plan, feature disabled. (The earlier `bound ⊆ public`
+  invariant is withdrawn — it contradicted curation.) Dishonesty is **soundness, not
+  completeness**: everything the catalog names must be providable to *someone* under
+  some real configuration — no single host can falsify that from one account, so it is
+  policed by review and registry practice, not by any wire check. The catalog is
+  discovery advertising, never a review or audit surface: provider trust is judged on
+  the implementation and its conformance evidence, not on what the catalog advertises.
+- **The `provider` id in a public document is a self-asserted claim.** The same-origin
+  discipline that governs `href` applies to *identity*: a host MUST NOT derive registry
+  trust, prior grants, or assurance from the id a well-known or catalog document
+  asserts, absent an out-of-band binding of that id to this origin or code identity —
+  otherwise any origin can serve `"provider": "com.example.app"` and inherit whatever
+  the host has attached to that name. (Peer credentials on a local channel identify a
+  *process*, not that the process is `org.example.editor`; the id→code binding is
+  registry and packaging territory in both cases.)
 - **Neither document sets an assurance level or a confirmation class.** A public file served
   by the application is the same untrusted-content class as page text, and a
-  pre-authentication document is weaker evidence again. The catalog names *what exists*; the
-  host decides *what it costs*.
+  pre-authentication document is weaker evidence again. What the catalog names must
+  exist; it never promises to name everything. The host decides *what it costs*.
 - **Origin-scoped, with a document-level escape hatch.** RFC 8615 is rooted at the origin,
   which excludes tenants at a path and many-applications-per-origin deployments. A document
   may therefore point at its own catalog with `<link rel="uap" href="…">`, constrained to
@@ -359,6 +386,12 @@ interchangeable — two windows of one editor can each hold a document whose
 internal id is `17`, and they are not the same "this". Whether *persistent*
 references may deliberately re-resolve across bindings is left open until a
 real provider needs it, rather than closed prematurely in either direction.
+Honesty about this rule's foundations: it is only as strong as binding
+identity across death and reconnection (F-005, F-008 — open) and as the
+provider's basis discipline — a provider that *reuses* a basis across
+bindings lets a dead handle validate against a new session, which collapses
+into the coherent-liar boundary (§Security) rather than anything this wire
+can detect.
 
 **Two staleness mechanisms, never merged.** A reference basis answers *which
 object, in which editing state*; the optimistic precondition
@@ -446,11 +479,32 @@ post-action reference, `revision_before`/`revision_after`, bounded structured
 Statuses: `accepted`, `completed`, `previewed`, `rejected`, `failed`,
 `cancelled`. Their honesty rules:
 
-- **`completed` requires evidence.** For state-changing actions the result must
-  carry a verifiable post-action revision, and hosts are expected to verify it;
-  a provider reporting its own success proves nothing. Read/view-only
-  completions need no verification round trip — their postcondition is the
-  returned data.
+- **`completed` requires evidence.** A provider emits `completed` only after
+  observing its intended effect; the host then treats that as a **claim** and
+  establishes completion by verifying the action's declared successful
+  postcondition — a result only *counts* as completed once host-side
+  verification succeeds, and a provider reporting its own success proves
+  nothing. Evidence is not one-shaped: a content revision is one kind — where
+  an action's verification method is revision-based, the result must carry a
+  verifiable post-action revision — but a thermostat setpoint read back, a
+  message present in Sent, or a reported trunk state are equally valid under
+  their verification methods; `revision_after` is not the universal
+  definition of successful mutation. **A declared verification method is
+  never self-certifying**: a method that resolves to the provider's own
+  assertion demonstrates nothing and cannot carry a result beyond `accepted`;
+  method adequacy is what conformance grades for assurance, and a host caps
+  its trust in a weakly-verified `completed` accordingly. The only actions
+  needing no additional round trip are those whose complete successful
+  result *is* their returned data **and which claim no state transition** —
+  the exemption keys on that property, never on the effect class: an action
+  claiming any state transition, including view-state transitions (navigate,
+  focus, select, activate), must satisfy its verification contract.
+  *Draft honesty (see Known Gaps #5): today's vocabulary expresses a
+  verification method only as descriptor prose plus ref/revision
+  expectations — a typed, dispatchable method declaration does not exist
+  yet, and the reference runtime and vocabulary still implement the older
+  revision-based rule. This bullet states the invariant the wire must grow
+  into, not what the current schemas can express.*
 - **`accepted` is nonterminal** (except for declared handoffs). A host MUST
   resolve a non-handoff acceptance by observation — confirm the effect against
   provider state, or report the observed current state — and MUST NOT present
@@ -696,19 +750,28 @@ declared direction rather than a retrofit.
   certification is a trust service, never an admission gate on implementing
   the protocol.
 
-## Why not MCP
+## Relationship to MCP
 
-MCP is a generic model/tool integration protocol; UAP is an application-control
-standard. Wrapping an application in MCP leaves the hard parts unspecified:
-semantic object identity and reference lifetime; coherent snapshots, revisions,
-ordered deltas, and invalidation; effects, preconditions, postconditions, and
-verification; user-versus-agent precedence; transaction, preview, cancellation,
-partial failure, and exact undo; capability composition across native, adapter,
-accessibility, and input-synthesis routes; behavioural conformance. Building
-those on top of MCP would duplicate discovery and schema machinery and encourage
-per-endpoint tool catalogues — paying context cost without gaining the control
-guarantees. UAP therefore stands alone and is independent of any model vendor or
-host product.
+MCP standardizes general model-integration primitives — tools, resources,
+prompts, and an execution lifecycle — and does that well. UAP standardizes a
+different layer: the semantic contract for **driving live application and
+device state** — object identity and reference lifetime; staleness versus
+revision conflict under concurrent human mutation; declared effects;
+verification, cancellation, and operation-scoped reversibility; route
+composition; provider and binding identity; honest uncertainty. Wrapping an
+application in bare tools leaves that contract unspecified, whatever the
+transport; specifying the contract does not require replacing the transport.
+
+UAP is therefore **not an MCP replacement and does not compete with it**. A
+UAP provider may be implemented over MCP where that fits — concretely: an
+**adapter wrapping an application's existing MCP tool surface** (origin
+`adapter`), exactly as it wraps any documented API, and exactly as App
+Intents, AppFunctions, Windows App Actions, WebMCP, native APIs,
+accessibility, and vision/HID are all legitimate routes underneath the
+provider contract. Using MCP as a *transport carrying UAP envelopes* is a
+different question — a wire-binding choice this draft deliberately leaves
+open. The protocol stands independent of any model vendor, host product, or
+carrier.
 
 ## Governance, licensing, versioning
 
@@ -756,7 +819,11 @@ contract (§1–§7) across two unlike first-party providers (an authenticated w
 application and a native mobile client) plus a wire-graded read provider in a
 desktop editor; strict atomic call decoding with machine-repairable
 `invalid_call`; declared terminality with the eventual-completion behaviour of
-§5; the fourteen-vector core suite and its wire-level runner.
+§5; the fourteen-vector core suite and its wire-level runner. Two §5
+statements run **ahead** of that gating and are named as such where they
+appear: the evidence-based completion model (Known Gaps #5) and the
+provider/binding identity split (F-004 — semantic invariant only; no wire
+bytes yet).
 
 Schema-only in this draft (shared grammar published ahead of execution): the
 query algebra and plan envelopes (§3, §8), grouped capability discovery,
@@ -801,10 +868,20 @@ most useful contribution this draft can receive.
    declare it; nothing in this draft says how a batch is submitted, and the
    conformance suite does not grade it. Do not declare it expecting it to be
    exercised.
-5. **Normative language is not RFC 2119-tagged.** Where this document says "must"
-   in lower case it means the same thing as upper case; the distinction is not yet
-   used consistently, and §5's verification requirement in particular is stated at
-   different strengths here, in the authoring skill, and in the vocabulary.
+5. **Normative language is not RFC 2119-tagged, and §5's verification model is
+   ahead of the machine-readable artifacts.** Where this document says "must" in
+   lower case it means the same thing as upper case; the distinction is not yet
+   used consistently. More seriously: §5 now states an evidence-based completion
+   model (declared verification methods; no effect-class exemption), while the
+   vocabulary still encodes the older rule — `status_semantics.completed`
+   requires host verification only when a ref/revision basis is present, the
+   descriptor's `verification` field is untyped prose, and the reference
+   runtime skips the verify round trip for read/view-effect completions. This
+   is a **contradiction to resolve at the wire-binding milestone** (typed
+   verification-method vocabulary + runtime alignment + vectors), not a
+   difference of strength. Until then, the only host-checkable evidence on
+   this draft's wire is ref/revision-shaped; build to that, read §5 as the
+   direction.
 6. **No cross-provider data plane.** A reference is provider-relative, and large
    payloads deliberately stay behind provider-local handles — so nothing yet
    specifies what crosses the boundary when one provider's artifact becomes

@@ -115,8 +115,10 @@ Separate from `invoke` because a provider that self-reports success is what the 
 refuses to trust. Compare the expectation — a `revision`, a `ref`, or `properties` —
 against a *fresh* observation, and return `verified: false` for anything you cannot
 evaluate. A completed mutation should return a post-action `ref` or
-`revision_after`; without that structured basis the host has nothing safe to verify
-and must not turn provider prose into a success announcement.
+`revision_after`; on the current draft wire that is the only structured basis a host
+can check (the spec's §5 evidence model is broader, but a typed verification-method
+declaration is a named gap — Known Gaps #5), and without it the host has nothing safe
+to verify and must not turn provider prose into a success announcement.
 
 ## `cancel(command_id) -> CancelOutcome`
 
