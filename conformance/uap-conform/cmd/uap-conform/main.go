@@ -1,6 +1,6 @@
 // uap-conform grades a UAP provider over the wire: it speaks the envelope dialect —
 // line-delimited JSON — to a provider reached either by spawning a harness command
-// (stdin/stdout) or by dialing a unix socket, runs the fourteen core conformance
+// (stdin/stdout) or by dialing a unix socket, runs the fifteen core conformance
 // vectors, and prints the machine-readable report to stdout.
 //
 //	uap-conform -cmd "python path/to/your/stdio_harness.py"

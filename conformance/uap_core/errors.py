@@ -180,11 +180,11 @@ class UapErrorCode(StrEnum):
     STALE_REFERENCE = "stale_reference"
     """A reference outlived its declared lifetime (epoch, revision, or scope moved)."""
     UNKNOWN_REFERENCE = "unknown_reference"
-    """The reference was never issued by this provider (or is malformed)."""
+    """A well-formed reference was never issued by, or no longer belongs to, this binding."""
 
     # -- capability --------------------------------------------------------
     UNSUPPORTED = "unsupported"
-    """No such action/capability on this provider right now."""
+    """No such action or capability is declared by this binding."""
     AMBIGUOUS = "ambiguous"
     """More than one provider offers this action at equal assurance — ask which."""
     PRECONDITION_FAILED = "precondition_failed"
@@ -212,7 +212,12 @@ class UapErrorCode(StrEnum):
     TIMEOUT = "timeout"
     """No result from the provider within the host's bound."""
     UNAVAILABLE = "unavailable"
-    """The provider/client is not reachable or not bound to this session."""
+    """The provider/client is not reachable or not bound to this session.
+
+    See :class:`UnavailableScope` for how much of the target is gone — "the editor is not
+    running" and "that window closed, the editor is still open" are one code today and have
+    different recoveries.
+    """
     INTERNAL = "internal"
     """The provider failed in a way it could not classify."""
 
@@ -224,7 +229,7 @@ class DeniedScope(StrEnum):
     *this* invoice" is a row-level rule about one record and says nothing about the
     capability. "You may not void invoices" is authority the manifest claimed and no
     longer has. Without this field a host must either ignore the second — leaving a
-    stale capability it will keep offering all session — or act on the first and
+    stale capability it will keep offering for the binding — or act on the first and
     disable invoicing because one protected record said no.
 
     Absent means :attr:`TARGET`. That is the direction that fails safely: a provider
@@ -236,7 +241,60 @@ class DeniedScope(StrEnum):
     """This record/object/document only. Discovery is untouched; try another target."""
 
     CAPABILITY = "capability"
-    """The whole capability, for this session. The manifest is now stale — stop offering it."""
+    """The whole capability for this binding. Its manifest is stale — stop offering it."""
+
+
+class UnavailableScope(StrEnum):
+    """How much of the target an ``UNAVAILABLE`` reaches — the HOST's own derivation.
+
+    Three failures used to be one sentence to the user. Two of them are this code, and they are
+    not the same situation: *no binding of this application is attached* means the editor is not
+    running, while *this binding is gone and a sibling is alive* means one window closed and the
+    editor is still there. The second is the more actionable of the two — it is the only one with
+    an alternative to offer — and it was the one that could not be said.
+
+    **Not wire vocabulary, and deliberately so.** A provider never sends this: it knows about
+    itself and nothing about the other windows of its own application, so only the host — which
+    holds the registry — can tell the two apart. It is therefore derived rather than declared, it
+    is absent from :meth:`UapError.to_dict`, and :meth:`UapError.from_dict` ignores it if a
+    provider sends one anyway. The vocabulary that is restated in six client implementations and
+    gated by the cross-client parity suite stays untouched.
+
+    Absent means the host derived nothing — a provider-authored ``unavailable``, or a failure
+    that happened before anything was routed. It reads as NEITHER value, because claiming "that
+    app is not running" about a refusal we did not derive is a guess, and the guess would be
+    spoken aloud.
+    """
+
+    PROVIDER = "provider"
+    """No binding of this application is attached at all. Today's meaning, made explicit."""
+
+    BINDING = "binding"
+    """Only this attachment is gone; siblings of the same application are live and listed."""
+
+
+#: How many surviving siblings ride along with a binding-scoped unavailability. This feeds an
+#: OFFER ("you've another one open"), not a listing, so it is bounded near one rather than near
+#: the number of windows a person can have open.
+MAX_ALTERNATIVE_BINDINGS = 3
+
+
+@dataclass(frozen=True, slots=True)
+class AlternativeBinding:
+    """One live sibling of a dead binding: what the host may OFFER, never what it may use.
+
+    ``same_machine`` is carried because the two offers are not equally safe to accept — "your
+    other window" and "a window on your desktop" invite different answers — and the user cannot
+    tell them apart from the handle. It is derivable from the handle
+    but is resolved once, at mint time, against the
+    binding that actually failed: nothing downstream still knows which one that was.
+    """
+
+    binding: str
+    """The routing handle to re-issue against, IF the user says so. Never a provider id."""
+
+    same_machine: bool
+    """Whether this sibling is on the machine the dead binding was on."""
 
 
 #: Codes a host should answer by re-observing rather than by asking the user.
@@ -249,17 +307,21 @@ REOBSERVABLE: frozenset[UapErrorCode] = frozenset(
     }
 )
 
-#: The narrower set the host may silently RE-RUN after re-observing.
+#: Error codes for which re-observation can make a second attempt meaningful.
 #:
-#: Not the same question as "is it worth looking again". These are the codes where looking
-#: again can restore the *identity* the caller meant — the object still exists, its basis has
-#: simply moved — so re-resolving and retrying reaches exactly the thing the user asked for.
+#: This is eligibility, not permission to retry. The error code is only one necessary
+#: condition: the reference runtime also requires a declared, non-empty, all-``read`` effect
+#: set; no generic descriptor preconditions or ``expect_revision``; a fresh object that still
+#: advertises the action; plus its unchanged-outcome, identity, routing, focus, confirmation,
+#: and retry-count guards. A view transition or mutation is re-observed and then returns to
+#: policy/the user without redispatch, because the host cannot yet prove that its preconditions
+#: and the scope of continuing consent still hold.
 #:
 #: ``CONFLICT`` is deliberately excluded despite being re-observable. A conflict means someone
 #: else's edit landed first; re-observing tells you what it says now, and retrying against the
 #: fresh revision would overwrite it. That is precisely what the optimistic check exists to
 #: prevent, so a conflict has to reach a decision-maker rather than a retry loop.
-RETRYABLE_AFTER_REOBSERVE: frozenset[UapErrorCode] = frozenset(
+AUTOMATIC_RETRY_ELIGIBLE_CODES: frozenset[UapErrorCode] = frozenset(
     {
         UapErrorCode.STALE_REFERENCE,
         UapErrorCode.UNKNOWN_REFERENCE,
@@ -305,6 +367,15 @@ class UapError:
     denied_scope: DeniedScope | None = None
     """Only meaningful on ``PERMISSION_DENIED``; absent reads as :attr:`DeniedScope.TARGET`."""
 
+    unavailable_scope: UnavailableScope | None = None
+    """Only meaningful on ``UNAVAILABLE``, and only ever set by the HOST. Absent reads as
+    neither value — see :class:`UnavailableScope`."""
+
+    alternatives: tuple[AlternativeBinding, ...] = ()
+    """Live siblings of a dead binding, best offer first. Present only with
+    :attr:`UnavailableScope.BINDING`, and an OFFER: nothing here may be routed to without the
+    user agreeing and the action being planned again."""
+
     def __post_init__(self) -> None:
         # Truncate rather than reject: an over-long message is a provider bug, but
         # losing the whole error because of it would be worse for the user.
@@ -312,6 +383,19 @@ class UapError:
             object.__setattr__(self, "message", self.message[:MAX_MESSAGE_CHARS])
         if self.denied_scope is not None and self.code is not UapErrorCode.PERMISSION_DENIED:
             raise ValueError(f"denied_scope is meaningless on {self.code.value}")
+        if self.unavailable_scope is not None and self.code is not UapErrorCode.UNAVAILABLE:
+            raise ValueError(f"unavailable_scope is meaningless on {self.code.value}")
+        # Both directions, because either half alone is a lie the user hears. Alternatives
+        # without the scope would offer another window while the sentence still says the
+        # application is gone; the scope without alternatives claims a sibling survived and then
+        # names none, leaving "shall I use the other one" pointing at nothing.
+        binding_scoped = self.unavailable_scope is UnavailableScope.BINDING
+        if bool(self.alternatives) is not binding_scoped:
+            raise ValueError("binding-scoped unavailability and its alternatives are one fact")
+        if len(self.alternatives) > MAX_ALTERNATIVE_BINDINGS:
+            # Trimmed, not rejected: a user with five windows open is not a bug, and the caller
+            # has already put the offer it wants made first (see UapRuntime._unavailable).
+            object.__setattr__(self, "alternatives", self.alternatives[:MAX_ALTERNATIVE_BINDINGS])
         if self.code is UapErrorCode.INVALID_CALL:
             if not self.field_path or self.expected is None or self.got is None:
                 raise ValueError("invalid_call requires field_path, expected, and got")
@@ -344,6 +428,13 @@ class UapError:
         )
 
     def to_dict(self) -> dict[str, Any]:
+        """The wire form. ``unavailable_scope`` and ``alternatives`` are deliberately absent.
+
+        Unlike ``denied_scope``, which a provider emits and every client restates, those two are
+        host-minted and host-consumed: serialising them would add words to a published schema
+        that no peer can produce, and would hand one application the routing handles of another
+        window it has no business knowing about.
+        """
         result: dict[str, Any] = {"code": self.code.value, "message": self.message}
         if self.denied_scope is not None:
             result["denied_scope"] = self.denied_scope.value
@@ -387,6 +478,10 @@ class UapError:
                 scope = DeniedScope.TARGET
             return cls(code=code, message=message, denied_scope=scope)
         if code is not UapErrorCode.INVALID_CALL:
+            # An `unavailable` arriving from a provider gets NO scope and NO alternatives, even
+            # if it sent some. Only the host holds the registry, so a provider claiming "this
+            # binding died, use that one instead" would be naming a target the host never derived
+            # — a provider steering the host's offer toward a window of its choosing.
             return cls(code=code, message=message)
         try:
             field_path = d.get("field_path")

@@ -84,6 +84,13 @@ func pass(id string) VectorResult {
 	return VectorResult{ID: id, Passed: true, Outcome: "passed"}
 }
 
+// passWithDetail is a pass that still has something to say — a vector whose obligation was
+// conditional and had no instances. The detail is what stops a vacuous pass being read, or
+// quoted, as evidence the thing was actually exercised.
+func passWithDetail(id, detail string) VectorResult {
+	return VectorResult{ID: id, Passed: true, Outcome: "passed", Detail: detail}
+}
+
 func fail(id, detail string) VectorResult {
 	return VectorResult{ID: id, Passed: false, Outcome: "failed", Detail: detail}
 }

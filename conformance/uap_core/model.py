@@ -288,12 +288,17 @@ class ActionCall:
     """Ask for a preview instead of a commit. Only meaningful if the provider declares it."""
 
     provider: str | None = None
-    """Pin the action to one provider, answering an ``AMBIGUOUS`` clarification.
+    """Pin the action to one BINDING, answering an ``AMBIGUOUS`` clarification.
 
     Standardising action names to ``<noun>.<verb>`` is what makes the protocol interfaceable —
     and it also makes `note.undo` mean the same thing on the phone and in the browser, so the
     host can no longer assume one candidate. When the user says "on my phone", that answer
-    travels here rather than the router guessing."""
+    travels here rather than the router guessing.
+
+    A binding handle, not a provider id, and the field keeps its
+    older name because the two are identical for anything that announces no instance. It has to
+    be the binding: "that window", "the editor on the laptop" is exactly the ambiguity this
+    answers, and a provider id cannot express it — it would name both windows at once."""
 
     def to_dict(self) -> dict[str, Any]:
         d: dict[str, Any] = {
@@ -352,7 +357,11 @@ class ActionStatus(StrEnum):
     """Refused before doing anything. ``error`` says why. Nothing changed."""
 
     FAILED = "failed"
-    """Started and did not finish. State may be partially changed — re-observe."""
+    """The invocation did not establish success and carries no no-effect guarantee.
+
+    Provider-side work may have begun. How much post-state is known is semantically separate;
+    current result fields carry only what can be established. Re-observe before retrying.
+    """
 
     CANCELLED = "cancelled"
     """Stopped at a safe boundary, by the user or the host."""
@@ -496,14 +505,14 @@ class VerificationResult:
 
 @dataclass(frozen=True, slots=True)
 class ProviderEvent:
-    """One ordered lifecycle event. Carries references and routing facts, never content."""
+    """One ordered state invalidation. Carries references and routing facts, never content."""
 
     provider: str
     type: str
     """e.g. ``view.changed``, ``focus.changed``, ``document.changed``, ``reference.invalidated``."""
 
     seq: int
-    """Monotonic per provider session. A gap means the host must re-observe."""
+    """Monotonic per live binding. A gap means the host must re-observe."""
 
     ref: Reference | None = None
     epochs: EpochSet | None = None

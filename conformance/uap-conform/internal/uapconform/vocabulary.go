@@ -1,7 +1,7 @@
 // Package uapconform is the wire-level UAP core conformance runner.
 //
 // It grades any provider that speaks the UAP envelope dialect — line-delimited JSON over
-// stdio or a unix socket — against the same fourteen core vectors as the host's in-process
+// stdio or a unix socket — against the same fifteen core vectors as the host's in-process
 // suite (the reference Python implementation this package is a port of). The vector
 // ids, the pass/skip/fail semantics, and the detail strings match the reference so that a
 // report is comparable no matter which runner produced it; the reference
@@ -191,11 +191,14 @@ const (
 )
 
 // CancelState values. Parsing fails closed to CancelTooLate — the strict reading is the
-// one that does not promise the user something did not happen.
+// one that does not promise the user something did not happen. CancelNothingChanged is the
+// answer for a command that already finished and left nothing behind; it is separate from
+// CancelTooLate because that answer offers the user an undo, and there is nothing to undo.
 const (
-	CancelStopped     = "stopped"
-	CancelTooLate     = "too_late"
-	CancelUnsupported = "unsupported"
+	CancelStopped        = "stopped"
+	CancelTooLate        = "too_late"
+	CancelNothingChanged = "nothing_changed"
+	CancelUnsupported    = "unsupported"
 )
 
 // Discovery and observation bounds, matching the host's.
@@ -278,12 +281,12 @@ const (
 	DeniedScopeTarget     = "target"
 	DeniedScopeCapability = "capability"
 
-	// ManifestScope: a bound session's manifest, or the pre-auth catalog a deployment publishes.
+	// ManifestScope: a live binding's manifest, or the pre-auth catalog a deployment publishes.
 	ManifestScopeSession = "session"
 	ManifestScopePublic  = "public"
 
-	// ProviderOrigin — provenance, never an assurance level. The host derives assurance from it
-	// and a manifest may only make the answer more conservative.
+	// ProviderOrigin — visible provenance, never an assurance award. Host-known provenance caps
+	// what evidence can establish; a manifest may only make the answer more conservative.
 	OriginNative        = "native"
 	OriginAdapter       = "adapter"
 	OriginAccessibility = "accessibility"

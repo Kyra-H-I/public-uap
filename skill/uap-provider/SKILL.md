@@ -1,17 +1,18 @@
 ---
 name: uap-provider
-description: Build or review a UAP provider or adapter — the interface that lets a voice agent observe and control an application semantically instead of clicking through its UI. Use when writing a native provider inside an application, an adapter over an application's existing API, or a browser/accessibility bridge; when adding or changing actions, effects, references, observation, or events on an existing provider; and when a conformance vector is failing. Teaches the contract, the declarations that drive the host's safety policy, and the conformance run that grades the result.
+description: Build or review a UAP provider — the contract for semantic application control across native, documented-API, browser/accessibility, or vision/input routes. Use when writing or changing a provider's actions, effects, references, observation, events, or route implementation, and when a conformance vector is failing. Teaches the declarations that drive host safety policy and the conformance run that grades the result.
 ---
 
 # Writing a UAP provider
 
 This skill teaches UAP (the Universal Application Protocol) version `1.0-draft`.
 A **provider** lets a host observe and act on one application through declared
-semantics rather than synthesised clicks. Two routes, one interface: a **native
-provider** implements it inside the application; an **adapter** implements it by
-calling the application's own documented API. Above the interface the host cannot
-tell which it got — that invariant is what makes an adapter a migration step rather
-than a competing architecture.
+semantics rather than synthesised clicks. **One contract, many routes:** a provider
+may be native or mediate a documented API, browser structure, accessibility, or
+vision and synthetic input as a fallback. Every route implements the same observable
+contract. `ProviderManifest.origin` keeps provenance visible; assurance is assessed
+separately and earned from conformance and runtime evidence, never from the route's
+label.
 
 The core wire vocabulary — error codes, statuses, effect kinds, lifetimes,
 request/result types, envelope keys, identifier grammars, payload bounds — is
@@ -22,6 +23,14 @@ including this one.** The workflow schema freezes interchange but does not mean 
 host implements query evaluation, automatic repair, or plan execution; those remain
 execution-gated in this draft. Your manifest declares the protocol version you
 implement; a protocol-major mismatch fails the `manifest.version` vector.
+
+`provider` is the stable application-integration identity, shared across machines,
+windows, and sessions. A **binding** is one live attachment; references name targets
+inside it. Dispatch, cancellation, events, and non-persistent references are
+binding-scoped, while durable grants attach to the provider only within the host's
+authority context. The binding discriminator remains pending transport work (F-004),
+so do not invent wire fields for it. `ActionCall.provider` disambiguates rival
+providers at equal assurance, not sibling bindings of one provider.
 
 
 ## Start by declaring, not implementing
@@ -49,9 +58,10 @@ user yourself, do not reason about consequence in the handler. A provider that
 could mark "email the customer" as a quiet local edit would be the whole safety
 model's single point of failure.
 
-**3. Absent, never no-op.** A capability unavailable for this device, account, or
-permission state is *missing from the manifest*, not present and failing. An action
-that is always there and always fails teaches the model to ignore discovery.
+**3. Absent only for binding-stable, target-independent reasons.** A capability the
+binding cannot attempt because the build omits it, the account lacks it, or a required
+platform permission was not granted is *missing from the manifest*. Transient state
+and target-specific permission are typed invocation failures, not manifest churn.
 
 **4. Reversibility means operation-bound.** A generic Edit→Undo menu is not a
 transaction protocol. Unless you can hand back a token that undoes **this command**,
@@ -60,10 +70,12 @@ the honest answer is `NONE`, whatever the application's UI offers.
 **5. An undo token is single-use.** Redeeming it twice reverts a *later* operation —
 exactly the damage undo exists to prevent.
 
-**6. Never silently retarget a stale reference.** Every reference declares its
-`kind`, `id`, `lifetime` and the `basis` (epoch) it was minted against. If the basis
-has moved, refuse with `stale_reference`. Acting on "the current one instead" is the
-failure mode this vocabulary exists to make impossible.
+**6. Validate every reference before work; never silently retarget.** Every reference
+declares its `kind`, `id`, `lifetime` and the `basis` (epoch) it was minted against.
+Check ownership and basis before any action effect. If it was never issued, refuse
+with `unknown_reference`; if its basis moved, refuse with `stale_reference`. Both are
+no-effect `REJECTED` results. Acting first or substituting "the current one instead"
+is the failure mode this vocabulary exists to make impossible.
 
 **7. Two staleness mechanisms, never merged.** `stale_reference` means *re-resolve
 what "this" meant*. `conflict` means *right target, someone else got there first*.
@@ -80,7 +92,9 @@ executed — "show me what this would do" turning into "do it" is the exact bug
 
 **9. Answer every cancel, honestly.** Providers that cannot cancel answer
 `UNSUPPORTED`. Say `stopped` only when you can *prove* the work never began;
-otherwise `too_late`. A user who said "stop" reads silence as success.
+otherwise `too_late`. A user who said "stop" reads silence as success. If the
+command is over *and* you can prove it left nothing behind, `nothing_changed`
+says so without the offer to undo that `too_late` carries.
 
 **10. Echo `command_id`, and replay it.** It is the idempotency and audit key. The
 same id twice must return the same answer, not a second execution.
@@ -88,12 +102,15 @@ same id twice must return the same answer, not a second execution.
 **11. `verify` must actually check.** It exists precisely because a provider
 self-reporting success proves nothing. An expectation you cannot evaluate is
 `verified: false` — "I could not check" and "it is fine" are different answers and
-only one is safe to say out loud. On this draft's wire, a completed mutation must
-return a post-action `ref` or `revision_after` — the only evidence shape the current
-vocabulary lets a host check. (The spec's evidence model is broader — a readback or a
-Sent-folder entry are valid in principle — but a typed verification-method declaration
-does not exist yet; see the spec's Known Gaps #5. Build to ref/revision today.) A host
-that cannot verify a completion must not announce success.
+only one is safe to say out loud. Every action that claims a state transition must
+satisfy its verification contract, including view transitions such as navigate,
+focus, select, and activate. Only an action whose complete successful result is its
+returned data and which claims no state transition needs no additional round trip.
+On this draft's wire, `ref` or `revision_after` is the only structured evidence basis
+a host can dispatch to `verify`. (The spec's evidence model is broader, but a typed
+verification-method declaration does not exist yet; see Known Gaps #5. Build state
+transitions to ref/revision evidence today.) A host that cannot verify a completion
+must not announce success.
 
 **12. Observation is a bounded query, not a dump.** Rank *before* you cap, so that
 when the limit bites it drops the least urgent object rather than an arbitrary slice.
@@ -109,8 +126,9 @@ command-correlated receiver must land before later asynchronous completion can b
 reported and verified.
 
 **14. Name actions `<noun>.<verb>`.** Names collide across providers by design; the
-router answers ambiguity with `ambiguous` and the caller disambiguates by provider id.
-Do not invent a unique per-application prefix to dodge the collision.
+router answers ambiguity with `ambiguous`, and `ActionCall.provider` chooses only
+among rival providers at equal assurance — never among sibling bindings of one
+provider. Do not invent a unique per-application prefix to dodge the collision.
 
 **15. Reject the whole malformed call; never trim actionable input.** `arguments`
 is a required finite-JSON object with string keys, at most 20 top-level keys,
@@ -123,6 +141,24 @@ Apply the same exactness to control fields: required non-empty bounded `action`
 and `command_id`; bounded string `provider` / `expect_revision` when present;
 boolean `dry_run` when present (false only when absent); and a closed, fully valid
 `ref` when present. Never coerce a scalar or discard a malformed reference.
+
+**16. An input the application would collect via a modal is an argument.** A
+provider that opens an interactive dialog to collect a value has mis-declared the
+action: take the value as a declared — usually required — argument and call the API
+path that accepts it. The dialog is the application's *rendering* of a missing
+parameter, not a protocol primitive; the host's conversation is the input dialog,
+and the model fills the value from context or asks before invoking. Choice dialogs
+become a read action returning the bounded option list, plus an argument taking the
+chosen id. Consent dialogs are never modeled as input at all (rule 2) — host policy
+derives confirmation from your declared effects. Secrets never transit the channel:
+refuse `permission_denied` and let the user finish in the application. A missing
+required argument is a structured refusal naming `/arguments/<name>` — never an
+opened dialog, never a guessed default.
+
+Declare requirements in `required_arguments`, a subset of your `arguments` keys.
+Emit it only when non-empty; a name in it that you never declared in `arguments` is
+a malformed descriptor, because it tells the host two different things about your own
+call shape.
 
 ## Then run the suite
 
@@ -154,7 +190,7 @@ Three qualifications, each load-bearing:
 - **Green is not done.** Rules 2, 5, 11 and 13 have no core vector — nothing
   mechanical fails when you break them. They are checked by review.
 
-Details of all fourteen vectors: `references/conformance.md`.
+Details of all fifteen vectors: `references/conformance.md`.
 
 ## Worked example
 

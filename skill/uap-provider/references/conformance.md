@@ -27,7 +27,7 @@ only that the fixtures match (see `traps.md`).
 **The wire-level runner** removes the language barrier entirely. `uap-conform`
 speaks the envelope dialect — line-delimited JSON — to a provider reached by
 spawning a harness command (`-cmd "…"`, stdin/stdout) or dialing a unix socket
-(`-socket path`), runs the same fourteen vectors, and prints the same report shape.
+(`-socket path`), runs the same fifteen vectors, and prints the same report shape.
 Exit codes: 0 passed, 1 vectors failed, 2 not gradable. A harness is ~20 lines in
 any language: read one JSON object per line, dispatch on `type`, reply on stdout
 echoing `id` — and log to stderr, never stdout, because stdout is the protocol. A
@@ -86,8 +86,44 @@ fake itself first: a provider that ignores the flag turns "show me what this wou
 into "do it".
 
 **`invoke.stale_reference`** — the one that matters most: a reference whose basis has
-moved must be refused, never retargeted at whatever is current. Skipped only when the
-provider has no scoped references at all.
+moved must be refused, never retargeted at whatever is current.
+
+Probed **once per lifetime**, not once per run. It used to probe whichever scoped object the
+observation listed first and grade the whole provider on it, which meant the provider chose
+which lifetime was examined — and `focus`, which goes stale the instant the caret moves, is
+the one least likely to be listed first. Only lifetimes an action can actually consume are
+graded: if no action declares `target: session`, a stale session reference can never be handed
+to anything, and demanding a probe for it would be a bar with no safety behind it.
+
+Consequence worth planning for: **a lifetime you publish and act on needs a read-only action
+targeting it, or its staleness is unproven.** A provider whose only focus-targeted actions
+write (insert at the caret, rename the symbol under it) gets a core skip naming `focus` — not
+a failure, since nothing is wrong, but level A stays out of reach until a read of that
+lifetime exists to probe. The probe must *target* the lifetime: aiming a document-scoped
+action at a focus reference tests nothing.
+
+The limit, stated plainly: this grades the lifetime you **publish** on the reference. A
+provider that hands back the caret labelled `document` is graded as a document and passes.
+Nothing outside the provider can tell that apart from a truthful document reference.
+
+Skipped entirely when the provider has no scoped, actionable references at all.
+
+**`invoke.required_arguments`** — an action's declared required argument, omitted,
+comes back as a repairable `invalid_call` naming `/arguments/<name>` — never executed
+with a guessed default, never answered with a dialog, never refused as terminal
+`invalid_argument`. Probed only with a read-only action: omitting an argument looks
+self-limiting, but a send missing only its required subject still has a recipient, and
+a provider that ignores the gap sends real mail.
+
+Three outcomes, deliberately distinct. Declaring no required argument anywhere
+**passes vacuously** — the obligation is conditional and every descriptor was read, so
+it has no instances — and the detail says so, because a pass line is not evidence the
+convention works. Declaring one only on actions that change something is a **skip**:
+the suite cannot omit an argument from a write to see what happens, and the provider
+has done nothing wrong, so asserting a defect would be false. That skip is *core*
+though — it withholds level A and names what went unproven, because "we could not
+check" must never read like "checked and fine". Expose one required argument on a read
+action and the vector grades properly.
 
 ## Beyond core
 
@@ -97,7 +133,7 @@ the same document — are separate vectors, and a provider passing core has not 
 demonstrated them. Nor does core grade every rule in `SKILL.md`: rules 2, 5, 11 and
 13 have no vector and are checked by review. The publication gate does exercise a
 malformed/oversized call through the stdio harness and requires structured
-`invalid_call`, but the fourteen-provider-vector suite does not yet grade automatic
+`invalid_call`, but the fifteen-provider-vector suite does not yet grade automatic
 repair orchestration; that execution remains gated.
 
 Passing the suite is what makes assurance level A available. It does not grant it:

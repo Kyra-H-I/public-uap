@@ -53,7 +53,7 @@ class ReferenceLifetime(StrEnum):
     """Valid while the document is at the basis revision. Invalidated by any write."""
 
     SESSION = "session"
-    """Valid for this provider session. Invalidated by disconnect/rebind."""
+    """Valid for this live binding. Invalidated by disconnect/rebind."""
 
     PERSISTENT = "persistent"
     """Durable identity the provider can re-resolve later. Needs no basis."""

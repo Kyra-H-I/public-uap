@@ -191,7 +191,7 @@ what changed while you were talking, and whether it can be undone.
 | `spec/` | The protocol specification (`1.0-draft`) |
 | `schema/` | Wire vocabulary + strict call/query/plan schemas, machine-readable |
 | `vectors/` | Golden wire exchanges from the reference implementation — test against reality instead of fixtures you invented on both sides |
-| `conformance/` | `pip install ./conformance` → the fourteen-vector core suite, plus `uap-conform`: a Go wire runner that grades **any** provider over NDJSON. `examples/minimal/stdio_harness.py` is the worked ~20-line harness, so the wire path is runnable here, not just claimed |
+| `conformance/` | `pip install ./conformance` → the fifteen-vector core suite, plus `uap-conform`: a Go wire runner that grades **any** provider over NDJSON. `examples/minimal/stdio_harness.py` is the worked ~20-line harness, so the wire path is runnable here, not just claimed |
 | `skill/` | The authoring skill — providers get written by coding agents, and this is what a coding agent reads first |
 | `examples/minimal/` | An honest little provider, kept green by CI: the example that cannot rot |
 | `scenarios/` | Pressure-test walks designed to make the protocol *fail* — plus the invariant-coverage matrix and the findings register they feed. Design evidence, open to counterexamples |

@@ -113,6 +113,7 @@ func RunCore(peer Peer) (*Report, error) {
 		vectorCancelIsAnsweredHonestly,
 		vectorDryRunNeverExecutes,
 		vectorStaleReferenceFailsClosed,
+		vectorRequiredArgumentsRefusedStructurally,
 	} {
 		result, err := vector(c)
 		if err != nil {
@@ -399,7 +400,7 @@ func vectorCancelIsAnsweredHonestly(c *ctx) (VectorResult, error) {
 }
 
 func vectorDryRunNeverExecutes(c *ctx) (VectorResult, error) {
-	action := c.readOnlyActionFor(c.order)
+	action := c.readOnlyActionFor(c.order, "")
 	if action == "" {
 		return skip("invoke.dry_run", "no side-effect-free action to probe with"), nil
 	}
@@ -426,61 +427,218 @@ func vectorDryRunNeverExecutes(c *ctx) (VectorResult, error) {
 	return pass("invoke.dry_run"), nil
 }
 
+// Once per LIFETIME, not once per run. This probed the first scoped object the observation
+// happened to list and graded the whole provider on it — so the PROVIDER chose which lifetime
+// was examined, by its own ordering, and `focus` (which goes stale the instant the caret moves,
+// the failure the reference model exists to prevent) was the one least likely to be listed
+// first. Same weakening vectorAddressableState was already hardened against.
 func vectorStaleReferenceFailsClosed(c *ctx) (VectorResult, error) {
-	var target *observedObject
-	for i := range c.observation.Objects {
-		obj := &c.observation.Objects[i]
-		if obj.RefErr == "" && obj.Ref.Lifetime != LifetimePersistent && obj.Ref.Basis != "" {
-			target = obj
-			break
+	// Only lifetimes some action can actually CONSUME. A provider may publish a session-scoped
+	// object while no action declares target: session — a stale reference of that lifetime can
+	// never be handed to anything, so demanding a probe for it is a bar with no safety behind it.
+	actionable := map[string]bool{}
+	for _, d := range c.descriptors {
+		if d.Target != "" {
+			actionable[d.Target] = true
 		}
 	}
-	if target == nil {
+
+	// One representative per lifetime, in first-seen order so the report stays stable.
+	var lifetimes []string
+	byLifetime := map[string]*observedObject{}
+	for i := range c.observation.Objects {
+		obj := &c.observation.Objects[i]
+		if obj.RefErr != "" || obj.Ref.Lifetime == LifetimePersistent || obj.Ref.Basis == "" {
+			continue
+		}
+		if !actionable[obj.Ref.Lifetime] {
+			continue
+		}
+		if _, seen := byLifetime[obj.Ref.Lifetime]; !seen {
+			byLifetime[obj.Ref.Lifetime] = obj
+			lifetimes = append(lifetimes, obj.Ref.Lifetime)
+		}
+	}
+	if len(lifetimes) == 0 {
 		return skip("invoke.stale_reference", "no scoped references"), nil
 	}
 
-	action, dryRun := c.probeActionFor(target.Actions)
-	if action == "" {
+	var unprobeable []string
+	probed := 0
+	for _, lifetime := range lifetimes {
+		target := byLifetime[lifetime]
+		action, dryRun := c.probeActionFor(target.Actions, lifetime)
+		if action == "" {
+			unprobeable = append(unprobeable, lifetime)
+			continue
+		}
+
+		probed++
+		staleRef := target.Ref
+		staleRef.Basis = staleRef.Basis + "~stale"
+		result, err := c.invoke(map[string]any{
+			"action":     action,
+			"command_id": newID(),
+			"arguments":  map[string]any{},
+			"dry_run":    dryRun,
+			"ref":        staleRef.toMap(),
+		})
+		if err != nil {
+			return VectorResult{}, err
+		}
+		if !result.changedNothing() {
+			return fail("invoke.stale_reference", fmt.Sprintf(
+				"a stale %s reference returned %s", lifetime, result.Status)), nil
+		}
+		if !result.HasError || !reobservable[result.ErrorCode] {
+			code := "none"
+			if result.HasError {
+				code = result.ErrorCode
+			}
+			return fail("invoke.stale_reference", fmt.Sprintf(
+				"a stale %s reference was rejected as %s, not stale_reference",
+				lifetime, code)), nil
+		}
+	}
+
+	if probed == 0 {
 		return fail("invoke.stale_reference",
 			"no action on an addressable object could be probed safely — a provider whose "+
 				"staleness handling cannot be checked has not demonstrated it"), nil
 	}
-
-	staleRef := target.Ref
-	staleRef.Basis = staleRef.Basis + "~stale"
-	result, err := c.invoke(map[string]any{
-		"action":     action,
-		"command_id": newID(),
-		"arguments":  map[string]any{},
-		"dry_run":    dryRun,
-		"ref":        staleRef.toMap(),
-	})
-	if err != nil {
-		return VectorResult{}, err
-	}
-	if !result.changedNothing() {
-		return fail("invoke.stale_reference",
-			fmt.Sprintf("stale reference returned %s", result.Status)), nil
-	}
-	if !result.HasError || !reobservable[result.ErrorCode] {
-		code := "none"
-		if result.HasError {
-			code = result.ErrorCode
-		}
-		return fail("invoke.stale_reference",
-			fmt.Sprintf("rejected as %s, not stale_reference", code)), nil
+	if len(unprobeable) > 0 {
+		sort.Strings(unprobeable)
+		return skip("invoke.stale_reference", fmt.Sprintf(
+			"verified for %d lifetime(s), but no side-effect-free action targets %s — "+
+				"staleness there is unproven", probed, strings.Join(unprobeable, ", "))), nil
 	}
 	return pass("invoke.stale_reference"), nil
 }
 
 // -- probe selection ----------------------------------------------------------------
 
+// vectorRequiredArgumentsRefusedStructurally grades the refusal a missing required argument
+// earns. A port of the reference suite's invoke.required_arguments — see its docstring for the
+// reasoning; the three outcomes must match it exactly.
+//
+// In short: an application collects a missing parameter with a modal, and a provider cannot,
+// because there is no user in front of it. Opening a dialog strands the call and inventing a
+// default writes something nobody named, so the gap goes back to the host as a repairable
+// invalid_call naming the field. invalid_argument is terminal and tells the host to give up on
+// the one failure it could have fixed.
+func vectorRequiredArgumentsRefusedStructurally(c *ctx) (VectorResult, error) {
+	const id = "invoke.required_arguments"
+
+	var requiring []string
+	for _, name := range c.order {
+		if len(c.descriptors[name].RequiredArguments) > 0 {
+			requiring = append(requiring, name)
+		}
+	}
+	if len(requiring) == 0 {
+		// Vacuous, and said so plainly: a PASS line in a published report is a claim adopters
+		// cite, and this one must not be quotable as evidence the convention was checked.
+		return passWithDetail(id, "no action declares a required argument, so no missing-argument "+
+			"refusal was exercised — this passes vacuously and is not evidence of the convention"), nil
+	}
+
+	// Read-only only. Omitting a required argument looks self-limiting, but a send missing
+	// only its subject still has a recipient, and a provider that ignores the gap sends real
+	// mail. A targeted action also needs a reference of ITS lifetime, or the provider answers
+	// the missing target first and the grader judges the wrong refusal.
+	var chosen string
+	var chosenRef *reference
+	for _, name := range requiring {
+		d := c.descriptors[name]
+		allRead := len(d.Effects) > 0
+		for _, e := range d.Effects {
+			if e.Kind != KindRead {
+				allRead = false
+			}
+		}
+		if !allRead {
+			continue
+		}
+		if d.Target == "" {
+			chosen, chosenRef = name, nil
+			break
+		}
+		if ref := c.refOfLifetime(d.Target); ref != nil {
+			chosen, chosenRef = name, ref
+			break
+		}
+	}
+	if chosen == "" {
+		sorted := append([]string(nil), requiring...)
+		sort.Strings(sorted)
+		return skip(id, "required arguments are declared only where omitting one could not be "+
+			"probed without changing something or addressing nothing: "+
+			strings.Join(sorted, ", ")), nil
+	}
+
+	// Every argument omitted, so a provider requiring several may name whichever it checks
+	// first. Naming ONE is the contract; naming which one is the provider's business.
+	body := map[string]any{
+		"action":     chosen,
+		"command_id": newID(),
+		"arguments":  map[string]any{},
+		"dry_run":    false,
+	}
+	if chosenRef != nil {
+		body["ref"] = chosenRef.toMap()
+	}
+	result, err := c.invoke(body)
+	if err != nil {
+		return VectorResult{}, err
+	}
+	required := c.descriptors[chosen].RequiredArguments
+	if !result.changedNothing() {
+		return fail(id, fmt.Sprintf(
+			"%s returned %s with %q omitted — a missing required argument must never execute",
+			chosen, result.Status, required[0])), nil
+	}
+	if !result.HasError || result.ErrorCode != CodeInvalidCall {
+		code := "none"
+		if result.HasError {
+			code = result.ErrorCode
+		}
+		return fail(id, fmt.Sprintf(
+			"%s refused a missing required argument as %s, not invalid_call — the host cannot "+
+				"repair a refusal it has to read", chosen, code)), nil
+	}
+	for _, name := range required {
+		if result.ErrorFieldPath == "/arguments/"+name {
+			return pass(id), nil
+		}
+	}
+	return fail(id, fmt.Sprintf(
+		"%s refused with field_path %q, which names no declared required argument of %s",
+		chosen, result.ErrorFieldPath, chosen)), nil
+}
+
+// refOfLifetime returns a live reference of exactly this lifetime, or nil.
+func (c *ctx) refOfLifetime(lifetime string) *reference {
+	for _, obj := range c.observation.Objects {
+		if obj.Ref.Lifetime == lifetime && obj.Ref.Basis != "" {
+			ref := obj.Ref
+			return &ref
+		}
+	}
+	return nil
+}
+
 // readOnlyActionFor picks an action that provably changes nothing, or "". Mirrors the
 // reference: the action must be targeted, and every declared effect must be a read.
-func (c *ctx) readOnlyActionFor(available []string) string {
+// A non-empty lifetime additionally requires the action to TARGET that lifetime. Without it a
+// document-scoped action gets aimed at a focus reference: the call tests nothing about focus
+// staleness, and a refusal about the mismatch reads as a staleness failure.
+func (c *ctx) readOnlyActionFor(available []string, lifetime string) string {
 	for _, name := range available {
 		d, ok := c.descriptors[name]
 		if !ok || d.Target == "" {
+			continue
+		}
+		if lifetime != "" && d.Target != lifetime {
 			continue
 		}
 		allRead := true
@@ -497,20 +655,23 @@ func (c *ctx) readOnlyActionFor(available []string) string {
 }
 
 // probeActionFor returns an action safe to probe staleness with, and whether it needs
-// dry_run. A pure read is ideal; failing that, a mutating targeted action sent as a
-// dry run — the provider must refuse it either way, and invoke.dry_run separately
-// proves a dry run never completes. Giving up would silently excuse the suite's most
-// important check, which is worse than no gate.
-func (c *ctx) probeActionFor(available []string) (string, bool) {
-	if readOnly := c.readOnlyActionFor(available); readOnly != "" {
-		return readOnly, false
-	}
-	for _, name := range available {
-		if d, ok := c.descriptors[name]; ok && d.Target != "" {
-			return name, true
-		}
-	}
-	return "", false
+// dry_run. Read-only, or nothing.
+//
+// This used to fall back to a MUTATING targeted action sent with dry_run=true, justified by
+// "invoke.dry_run separately proves a dry run never completes". That justification is circular:
+// invoke.dry_run picks its own probe with readOnlyActionFor, so it SKIPS for exactly the
+// provider that triggers the fallback. The reference suite removed it after a reviewer ran it
+// against a provider whose only targeted action was an external send and watched the suite
+// invoke mail.send. This runner kept the fallback for a while afterwards — invisible to the
+// cross-runner test, because the reference fake has a read-only action and never reaches it.
+//
+// So there is no fallback. A provider with no read-only targeted action gets a FAILED
+// invoke.stale_reference: "we could not check this safely" is a real result, and sending
+// someone's mail to find out is not a trade this suite makes on an adopter's behalf. The
+// second return value stays false so the call shape is explicit about never asking for a
+// preview.
+func (c *ctx) probeActionFor(available []string, lifetime string) (string, bool) {
+	return c.readOnlyActionFor(available, lifetime), false
 }
 
 func (c *ctx) firstScopedRef() *reference {

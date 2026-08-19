@@ -22,11 +22,13 @@ that tempt implementations to blur them: a human hand on the same keyboard.
    one of the two classic bad implementations the reference model exists to
    exclude.
 2. **The human switches tabs.** The basis moves; the agent's held reference to
-   "this document" now points at a view that is not there. Next use fails
+   "this document" now points at a view that is not there. The next read fails
    **`stale_reference`** — *what does "this" mean now?* — and the host
-   re-resolves by identity (same document in another column? closed?) and
-   retries once, silently, because this race is ordinary life with a human,
-   not an error worth narrating.
+   re-observes. For this read, the rejection proves no effect; a fresh reference
+   from the same originating binding names the same document, the material call
+   is unchanged, its preconditions still hold, and no consent boundary moved.
+   Only then may the host retry once, silently. If any check fails, recovery
+   returns to policy/user rather than treating a different act as a retry.
 3. **The human types instead.** Identity did not move — same document, same
    view — but content did. The agent's guarded edit carries
    `expect_revision` from its last observation; the provider compares

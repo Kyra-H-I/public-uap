@@ -80,6 +80,7 @@
     "cancel_states": [
       "stopped",
       "too_late",
+      "nothing_changed",
       "unsupported"
     ],
     "invalid_call_expected_kinds": [
@@ -136,16 +137,31 @@
     ]
   },
   "error_semantics": {
-    "$comment": "How a host reacts to each code. Codes in neither set (ambiguous) are clarify signals: only the user can resolve them.",
+    "$comment": "How a host reacts to each code. Automatic retry is conditional host policy, not a property of an error code, and these named sets are intentionally non-exhaustive. Ambiguous is the caller-choice clarify signal.",
     "reobservable": [
       "conflict",
       "stale_reference",
       "unknown_reference"
     ],
-    "retryable_after_reobserve": [
-      "stale_reference",
-      "unknown_reference"
-    ],
+    "automatic_retry_after_reobserve": {
+      "$comment": "An eligible code is necessary but never sufficient. The reference host also preserves its unchanged-outcome, exact dispatched binding, material call snapshot, retained issued reference, result correlation, non-focus target identity, current authority, confirmation, and single-retry guards. The fresh object must still advertise the action, the descriptor must have no generic prose preconditions, and the call must have no expect_revision. View actions and mutations return without redispatch because the host cannot yet prove that their preconditions and continuing consent remain valid.",
+      "eligible_error_codes": [
+        "stale_reference",
+        "unknown_reference"
+      ],
+      "requires_changed_nothing": true,
+      "requires_echoed_result_command_id": true,
+      "requires_exact_dispatched_binding": true,
+      "requires_retained_issued_reference": true,
+      "requires_unchanged_material_call": true,
+      "requires_current_authority": true,
+      "requires_declared_effects": true,
+      "all_effects_must_be": "read",
+      "requires_no_descriptor_preconditions": true,
+      "requires_no_expect_revision": true,
+      "requires_fresh_object_advertises_action": true,
+      "maximum_retries": 1
+    },
     "repairable_once": [
       "invalid_call"
     ],
@@ -210,6 +226,13 @@
     "rejected": {
       "terminal": true,
       "guarantees_no_effect": true
+    },
+    "failed": {
+      "$comment": "Terminal non-success, not an epistemic state. It provides no no-effect guarantee; current result fields carry only facts actually established.",
+      "terminal": true,
+      "successful_postcondition_established": false,
+      "guarantees_no_effect": false,
+      "post_state_knowledge": "not_encoded_by_status"
     }
   },
   "event_semantics": {
@@ -469,6 +492,7 @@
         "verification"
       ],
       "when_set": [
+        "required_arguments",
         "target",
         "terminality",
         "undo_of"

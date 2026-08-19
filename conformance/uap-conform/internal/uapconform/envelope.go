@@ -49,6 +49,9 @@ type descriptor struct {
 	Effects      []effect
 	// Target is the required reference lifetime, or "" for a targetless action.
 	Target string
+	// RequiredArguments names the arguments the action cannot run without. Absent on the
+	// wire when empty, so nil and empty mean the same thing: nothing is required.
+	RequiredArguments []string
 }
 
 type reference struct {
@@ -118,6 +121,10 @@ type actionResult struct {
 	Status    string
 	HasError  bool
 	ErrorCode string
+	// ErrorFieldPath is the JSON Pointer an invalid_call names as repairable. Kept raw:
+	// the grader compares it against a path it built itself, and normalising a provider's
+	// answer first would let a wrong one match.
+	ErrorFieldPath string
 }
 
 // changedNothing mirrors ActionResult.changed_nothing: only a rejection or a preview
@@ -233,9 +240,10 @@ func parseEffect(d map[string]any) effect {
 // capability.describes rather than vanishing.
 func parseDescriptor(d map[string]any) (descriptor, bool) {
 	out := descriptor{
-		Name:         asString(d["name"]),
-		Verification: asString(d["verification"]),
-		Target:       asString(d["target"]),
+		Name:              asString(d["name"]),
+		Verification:      asString(d["verification"]),
+		Target:            asString(d["target"]),
+		RequiredArguments: asStrings(d["required_arguments"]),
 	}
 	if out.Name == "" {
 		return out, false
@@ -301,6 +309,7 @@ func parseActionResult(d map[string]any) actionResult {
 		if !knownCodes[r.ErrorCode] {
 			r.ErrorCode = CodeInternal
 		}
+		r.ErrorFieldPath = asString(e["field_path"])
 	}
 	return r
 }

@@ -232,7 +232,7 @@ bindings is ordinary target resolution against the host's working context,
 asked out loud only as the cold case — it is *not* the `ambiguous` error,
 which names rival providers at equal assurance.
 
-#### `scope` — session manifest or public catalog
+#### `scope` — binding manifest or public catalog
 
 `scope` distinguishes the two documents that share this schema:
 
@@ -379,6 +379,11 @@ Three invariants are frozen in v1:
 3. References become invalid **explicitly** — by basis change — never by
    timeout alone.
 
+A provider MUST validate reference ownership and basis before beginning the
+action. A stale or unknown reference is rejected without effect as
+`stale_reference` or `unknown_reference`; the provider never acts first and
+reports the reference error afterward.
+
 **Sibling bindings do not share references.** A non-persistent reference is
 minted by one binding (§1), and a host MUST retain that originating binding:
 equal provider identity never makes references from sibling bindings
@@ -446,7 +451,8 @@ field order so multi-error calls name the same first repair everywhere. Bounds
 
 Every action descriptor declares:
 
-- typed arguments and preconditions;
+- typed arguments and preconditions, and which of those arguments are
+  **required** — the subset the action cannot run without;
 - **effects** — what escapes, ordered by radius: `read`, `view`, `draft`,
   `persist`, `device`, `external` — each with a scope and an operation-bound
   **reversibility** (`none`, `checkpoint`, `operation_undo`);
@@ -458,6 +464,45 @@ Every action descriptor declares:
   sent-but-not-confirmed, never converted into a false failure);
 - a verification method; idempotency; and optionally `undo_of`, naming the
   action this one reverses.
+
+**Argument names are `[a-z][a-z0-9_]{0,31}`** — one segment of an action name.
+The grammar is restrictive deliberately: a malformed-call refusal names the
+offending field as a JSON Pointer (`/arguments/<name>`), and RFC 6901 gives `/`
+and `~` meaning inside a token, so a name carrying either yields a path the
+repairing host walks somewhere that does not exist. An adapter over an API whose
+parameter is `newName` or `file-path` maps the name rather than passing it
+through. A name in `required_arguments` that the descriptor never declared in
+`arguments` is malformed, on the same principle as a capability whose declared
+`action_count` disagrees with its action list: one descriptor, one story.
+
+**A dialog is not a protocol primitive.** Applications collect mid-action input
+by popping a modal — a filename for Save As, a target for a rename — and the
+temptation is to model that as a suspended command that asks the user something.
+This protocol does not. A popup is an application's *rendering* of one of five
+underlying needs, and each has an existing home:
+
+1. **A missing parameter** is a declared argument. The host's conversation *is*
+   the input dialog: the model fills the value from context, or asks before
+   invoking. A provider that opens an interactive dialog to collect a value has
+   mis-declared the action — it should take the value as a (usually required)
+   argument and call the API path that accepts it.
+2. **A choice among application-computed options** is a read action returning
+   the bounded option list, followed by an argument carrying the chosen id. The
+   two phases are explicit in the action grammar, never a suspended command.
+3. **Consent** ("Overwrite?", "Send it?") is never modeled as input at all. Host
+   policy derives confirmation from declared effects; races are settled by
+   `expect_revision` and `conflict`.
+4. **Secrets and authentication** never transit the channel: refuse
+   `permission_denied` and let the user finish inside the application.
+5. **Progress and notification dialogs** are events or observation.
+
+The rejected alternative is worth naming, because it is the obvious one:
+provider-driven elicitation — a continuation status meaning "ask the user this
+and call me back". It needs a durable command-lifecycle receiver this draft does
+not have (see §5); it asks at the worst possible moment, mid-execution; it lets a
+provider author prompt text the host would speak in its own voice, which is a
+phishing channel; and it duplicates the approval state a host's task lifecycle
+already models. Mid-plan values bind through the frozen plan slot instead (§8).
 
 **The host derives consent; the provider never chooses it.** Confirmation
 classes are computed by host policy from declared effects and assurance — a
@@ -511,16 +556,25 @@ Statuses: `accepted`, `completed`, `previewed`, `rejected`, `failed`,
   an unconfirmed acceptance as success. The current draft's event envelope has
   no command-terminal linkage; an effect landing after the session's turn ends
   cannot yet resolve its command.
-- **`rejected` means nothing ran; `failed` means the outcome is unknown.** A
-  provider must never report `rejected` when work may have started.
+- **`rejected` means the provider refused before provider-side execution began
+  and guarantees no effect; `failed` means the invocation did not establish the
+  declared successful postcondition and carries no such guarantee.** Work may
+  have begun, but `failed` does not assert that it did.
+  Whether the resulting state is known, unknown, or partially known is a
+  separate dimension: current result fields carry only the post-state facts and
+  evidence actually established. The current wire has no dedicated
+  epistemic-state field; that is not a reason to invent another execution
+  status. A provider must never report `rejected` when work may have started.
+- **A result echoes the attempt's `command_id`.** A host treats a mismatched id
+  as an uncorrelated `failed` outcome and MUST NOT use its status or error to
+  authorise recovery or retry.
 - **Idempotency:** re-presenting the same `command_id` returns the original
   outcome; it never runs the work twice. Rejections replay too — the same
   command must not get a different answer because the world moved.
 
 The error taxonomy is closed, and each code names its recovery:
-`stale_reference` (re-observe, re-resolve by identity, retry once — silently;
-this race is ordinary), `unknown_reference`, `unsupported`, `ambiguous` (more
-than one provider serves the action at equal assurance — ask, by name),
+`stale_reference`, `unknown_reference`, `unsupported`, `ambiguous` (more than
+one provider serves the action at equal assurance — ask, by name),
 `precondition_failed`, `invalid_call` (machine-repairable: `field_path`, a
 typed `expected` constraint, `got`, an optional suggestion — one automatic
 repair attempt, then an honest surfaced failure), `invalid_argument`,
@@ -528,6 +582,46 @@ repair attempt, then an honest surfaced failure), `invalid_argument`,
 auto-retried: someone else's edit won), `cancelled`, `timeout`, `unavailable`,
 `internal`. Provider prose in errors is **untrusted input**: hosts speak their own
 words and keep provider text out of durable records.
+
+For `stale_reference` and `unknown_reference`, the host first re-observes; it
+MAY automatically retry once only when it can establish **all** of these facts:
+
+1. The refused attempt had no effect.
+2. The replacement reference came from the host's retained originating binding
+   and names the same semantic target (`kind` and `id`) with only a fresh basis.
+   This is a semantic binding requirement; this draft still assigns no wire
+   representation to a binding discriminator.
+3. The material call — action, arguments, provider pin and routed binding,
+   reference `kind`, `id`, and `lifetime`, `expect_revision`, and `dry_run` — is
+   unchanged. Only the reference `basis` and the new `command_id` may differ.
+4. Every relevant precondition has been revalidated against the fresh
+   observation; the provider rechecks `expect_revision`, when present, before
+   executing the retry.
+5. Current authority and continuing user consent cover that exact retry.
+
+If any fact cannot be established, the host MUST NOT retry automatically: it
+returns the fresh state and refusal to policy and, where authority or intent
+must be renewed, to the user. This rule is deliberately the same for an
+`unknown_reference` that can be rediscovered; never-issued, malformed, or
+cross-binding references simply stop. A provider still rejects the stale or
+unknown reference — host-side recovery never licenses provider-side
+retargeting.
+
+**An omitted required argument is `invalid_call`, never `invalid_argument`.** The
+two codes sit on opposite sides of the recovery taxonomy above: `invalid_call` is
+the one a host may repair once, `invalid_argument` is terminal domain validation
+of a call that was well formed. Answering a missing argument with prose therefore
+tells the host to give up on the single failure it could have fixed on its own —
+it knows the value, or it can ask the user for it. The refusal sets `field_path`
+to `/arguments/<name>`, `expected` to the argument's type, and `got` to the
+literal `absent`; `suggestion` may carry the application's own would-be default
+when that is deterministic. One documented convention, machine-readable, rather
+than a sentence each provider phrases its own way.
+
+`got: "absent"` cannot be distinguished from an argument whose value genuinely is
+the string `"absent"`. This is accepted rather than solved: the alternative puts an
+explicit null on the wire in every implementation to disambiguate a case no real
+provider encounters.
 
 **`permission_denied` carries how far the refusal reaches.** Two refusals wear this
 code and mean opposite things, so the error may set `denied_scope`:
@@ -548,12 +642,24 @@ provably never began (the host's own not-yet-dispatched check is the only hard
 guarantee), `too_late` when it was already under way — cancelling is not
 undoing — and `unsupported` rather than silence.
 
+`nothing_changed` is the fourth answer, and it exists because `too_late` says two
+things at once: *it is over* and *the world may have moved*. When the second half is
+known to be false — a command refused for a stale reference, a read that already
+returned — a host that can only say `too_late` offers the user an undo for something
+that never happened, and an offer to revert nothing is a dead end the user has to
+discover for themselves. `nothing_changed` claims nothing about stopping; it reports
+what the world looks like afterwards. Providers MAY answer it wherever they can prove
+the command left nothing behind; `too_late` stays correct and sufficient, so no
+existing provider becomes non-conformant. A host that does not know the word must
+treat it as `too_late`, which is the safe direction and the reason it is stated here
+rather than left as a host-local nicety.
+
 ### §6 Events
 
-Providers with `events: true` emit bounded, typed lifecycle events
+Providers with `events: true` emit bounded, typed state-invalidation events
 (`view.changed`, `document.changed`, `reference.invalidated`, …) carrying
 references and routing facts, never content. Events are ordered by a monotonic
-per-session sequence; a gap obliges the host to discard cached state and
+sequence per live binding; a gap obliges the host to discard cached state and
 re-observe. Events let a host react and verify without polling; they are local
 runtime traffic.
 
@@ -819,8 +925,8 @@ contract (§1–§7) across two unlike first-party providers (an authenticated w
 application and a native mobile client) plus a wire-graded read provider in a
 desktop editor; strict atomic call decoding with machine-repairable
 `invalid_call`; declared terminality with the eventual-completion behaviour of
-§5; the fourteen-vector core suite and its wire-level runner. Two §5
-statements run **ahead** of that gating and are named as such where they
+§5; the fifteen-vector core suite and its wire-level runner. Two statements
+in this draft run **ahead** of that gating and are named as such where they
 appear: the evidence-based completion model (Known Gaps #5) and the
 provider/binding identity split (F-004 — semantic invariant only; no wire
 bytes yet).

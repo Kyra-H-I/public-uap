@@ -1,10 +1,14 @@
 """The UAP provider contract (spec §Adapters).
 
-One interface, two implementation routes. A native provider implements this
-directly inside the application; an adapter implements it by calling the
-application's own documented API. Above this line the host cannot tell which it
-got, apart from :attr:`ProviderManifest.origin` — and that compatibility invariant
-is what makes an adapter a migration step rather than a competing architecture.
+One observable contract, many implementation routes. A provider may be native or
+mediate a documented API, browser structure, accessibility, or vision and synthetic
+input as a fallback. Every route exposes this contract;
+:attr:`ProviderManifest.origin` keeps provenance visible, while assurance is assessed
+separately and earned from conformance and runtime evidence.
+
+The stable provider id names the application integration, not a live window,
+machine, or session. A live binding is selected separately by the host and transport;
+its pending discriminator (F-004) is deliberately not invented here.
 
 Structural typing (``Protocol``, no inheritance) matches the host's device-transport
 seam: a provider that lives in
@@ -23,12 +27,14 @@ Method-by-method, the reason each exists:
 ``invoke``
     One typed command with an idempotency key and an optional optimistic basis.
 ``verify``
-    "Did that actually happen?" — separate from ``invoke`` because a provider that
+    "Did that actually happen?" — for every claimed state transition, including a
+    view transition, and separate from ``invoke`` because a provider that
     self-reports success is exactly what principle 5 refuses to trust.
 ``cancel``
     "Stop!" — with an honest answer about whether it actually stopped.
 ``events``
-    An ordered stream so the host can react and invalidate without polling.
+    An ordered state-invalidation stream per live binding, so the host can react
+    without polling.
 """
 
 from __future__ import annotations
@@ -51,14 +57,14 @@ from uap_core.model import (
 
 @runtime_checkable
 class UapProvider(Protocol):
-    """What every UAP provider exposes, native or adapter."""
+    """What every native or mediated UAP route exposes."""
 
     async def describe(self) -> ProviderManifest:
         """Identity, capabilities (ids only), and declared safety features.
 
-        Must reflect what is available *right now* for this device, account, and
-        permission state: an unavailable capability is absent, never present and
-        failing.
+        Include only capabilities this binding can attempt based on binding-stable,
+        target-independent facts. Transient state and target-specific permission
+        are typed invocation failures, not reasons to churn the manifest.
         """
         ...
 
@@ -71,11 +77,20 @@ class UapProvider(Protocol):
         ...
 
     async def invoke(self, call: ActionCall) -> ActionResult:
-        """Execute one typed action, returning a structured result — never a bare bool."""
+        """Execute one typed action, returning a structured result — never a bare bool.
+
+        ``call.provider`` disambiguates rival stable provider identities only. The
+        host and transport resolve the live binding outside this field.
+        """
         ...
 
     async def verify(self, expectation: Expectation) -> VerificationResult:
-        """Check the world against what the host expected after an action."""
+        """Freshly check a claimed postcondition, including any view-state change.
+
+        The current draft wire dispatches only reference/revision-shaped evidence;
+        return ``verified=False`` for anything this binding cannot evaluate (Known
+        Gaps #5).
+        """
         ...
 
     async def cancel(self, command_id: str) -> CancelOutcome:
@@ -89,7 +104,7 @@ class UapProvider(Protocol):
         ...
 
     def events(self) -> AsyncIterator[ProviderEvent]:
-        """Ordered lifecycle events. Sequence gaps are the host's cue to re-observe."""
+        """Ordered state invalidations for this binding; gaps cue re-observation."""
         ...
 
 

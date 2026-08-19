@@ -39,17 +39,20 @@ gets stress-tested by work that outlives the conversation that asked for it.
    defining walk.** What it needs is narrow: command-correlated progress and
    terminal events — not a job-orchestration framework, which the draft's
    the-model-is-the-loop stance rightly refuses to become.
-4. **"Stop it"** — mid-run. Cancellation's three honest outcomes do their
+4. **"Stop it"** — mid-run. Cancellation's honest outcomes do their
    work: `stopped` only if the provider can prove execution never began
    (queued, not yet dispatched to the kernel); `too_late` when the cell
    already ran its side effects — cancelling is not undoing, and the
    post-cancel state must be *declared*, not implied clean; `unsupported`
-   said out loud rather than a silent swallow. The nasty sub-case — the
-   interrupt lands while the cell is mid-write to disk — resolves as
-   `too_late` plus an observation of what actually got written: structured
-   partial truth, and the walk notes the want of **structured partial
-   failure** on the wire (evidence toward the transactions gap, not a new
-   finding).
+   said out loud rather than a silent swallow. The fourth,
+   `nothing_changed`, is unreachable in this walk and that is the point of
+   it: a cell that ran is never provably harmless, so the word a host would
+   use to skip the undo offer is exactly the word this domain cannot say.
+   The nasty sub-case — the interrupt lands while the cell is mid-write to
+   disk — resolves as `too_late` plus an observation of what actually got
+   written: structured partial truth, and the walk notes the want of
+   **structured partial failure** on the wire (evidence toward the
+   transactions gap, not a new finding).
 5. **`stream.start` (the OBS half).** Five truths: command accepted; app
    entered streaming state; network connection up; remote platform
    accepted; viewers receiving. The provider can attest the first three,

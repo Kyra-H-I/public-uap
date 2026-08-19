@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 
 from uap_core.cancel import CancelOutcome, CancelState
 from uap_core.effects import ActionTerminality, Effect, EffectKind, Reversibility
-from uap_core.errors import UapError, UapErrorCode
+from uap_core.errors import InvalidCallExpectation, UapError, UapErrorCode
 from uap_core.manifest import (
     ActionDescriptor,
     CapabilitySummary,
@@ -43,6 +43,11 @@ WRITE_ACTION = "fake.save"
 SEND_ACTION = "fake.send"
 #: Addressed entirely by ARGUMENT, with no reference — the shape of `phone.call`.
 DIAL_ACTION = "fake.dial"
+#: Declares a REQUIRED argument, and is read-only so omitting it can be probed safely.
+#: `fake.dial` would have been the tempting place to put the requirement — it already takes
+#: an argument and no reference — but its effect is `external`, and the conformance suite may
+#: not invoke an action that could reach outside to find out whether it refuses.
+FIND_ACTION = "fake.find"
 CAPABILITY = "fake.documents"
 
 DESCRIPTORS: dict[str, ActionDescriptor] = {
@@ -72,6 +77,15 @@ DESCRIPTORS: dict[str, ActionDescriptor] = {
         # this action's terminal truth rather than a state awaiting an outcome.
         terminality=ActionTerminality.HANDOFF,
     ),
+    FIND_ACTION: ActionDescriptor(
+        name=FIND_ACTION,
+        summary="Find documents matching a query.",
+        effects=(Effect(EffectKind.READ, "the document index"),),
+        arguments={"query": "what to look for"},
+        required_arguments=("query",),
+        verification="the matches are returned",
+        idempotent=True,
+    ),
     SEND_ACTION: ActionDescriptor(
         name=SEND_ACTION,
         summary="Send the document to someone.",
@@ -92,7 +106,12 @@ class FakeProvider:
     origin: ProviderOrigin = ProviderOrigin.NATIVE
     document_basis: str = "rev-1"
     operation_revision: str = ""
-    actions: tuple[str, ...] = (READ_ACTION, WRITE_ACTION, SEND_ACTION, DIAL_ACTION)
+    actions: tuple[str, ...] = (READ_ACTION, WRITE_ACTION, SEND_ACTION, DIAL_ACTION, FIND_ACTION)
+    #: Per-instance, so a test can add an action without mutating the module-level dict and
+    #: leaking it into every test that runs after it. `describe_capability` and `invoke` both
+    #: read this, which is what stops a subclass's extra action from being described and then
+    #: refused as `unsupported` by an invoke that consulted a different map.
+    descriptors: dict[str, ActionDescriptor] = field(default_factory=lambda: dict(DESCRIPTORS))
     invoked: list[ActionCall] = field(default_factory=list)
 
     # -- discovery ---------------------------------------------------------
@@ -112,7 +131,7 @@ class FakeProvider:
     async def describe_capability(self, capability_id: str) -> tuple[ActionDescriptor, ...]:
         if capability_id != CAPABILITY:
             return ()
-        return tuple(DESCRIPTORS[name] for name in self.actions)
+        return tuple(self.descriptors[name] for name in self.actions)
 
     # -- state -------------------------------------------------------------
     def epochs(self) -> EpochSet:
@@ -158,12 +177,28 @@ class FakeProvider:
                 status=ActionStatus.REJECTED,
                 error=UapError(UapErrorCode.UNSUPPORTED, "no preview"),
             )
-        descriptor = DESCRIPTORS.get(call.action)
+        descriptor = self.descriptors.get(call.action)
         if descriptor is None or call.action not in self.actions:
             return ActionResult(
                 command_id=call.command_id,
                 status=ActionStatus.REJECTED,
                 error=UapError(UapErrorCode.UNSUPPORTED, "no such action"),
+            )
+        # Before the target check, because a malformed call is answered before a precondition:
+        # the host can repair the first from the structured fields and can only re-observe for
+        # the second, so answering them in the wrong order sends it down the wrong path.
+        missing = [name for name in descriptor.required_arguments if name not in call.arguments]
+        if missing:
+            return ActionResult(
+                command_id=call.command_id,
+                status=ActionStatus.REJECTED,
+                error=UapError(
+                    UapErrorCode.INVALID_CALL,
+                    f"{missing[0]} is required",
+                    field_path=f"/arguments/{missing[0]}",
+                    expected=InvalidCallExpectation.type("string"),
+                    got="absent",
+                ),
             )
         if descriptor.target is not None:
             if call.ref is None:

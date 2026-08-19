@@ -22,6 +22,7 @@ type fakeProvider struct {
 	nondeterministic    bool // the same command id gives a different answer on replay
 	cancelTooLate       bool // declares cancellation but answers too_late for unstarted work
 	eagerDryRun         bool // executes a dry run
+	proseRefusal        bool // answers a missing required argument with terminal prose
 
 	calls map[string]int
 }
@@ -31,6 +32,11 @@ const (
 	fakeSave = "fake.save"
 	fakeSend = "fake.send"
 	fakeDial = "fake.dial"
+	// Read-only AND carries a required argument, so invoke.required_arguments has a probe it
+	// can safely omit one from. fake.dial would have been the tempting place for the
+	// requirement — it already takes an argument and no reference — but its effect is
+	// external, and the suite may not invoke that to find out whether it refuses.
+	fakeFind = "fake.find"
 )
 
 func (f *fakeProvider) Call(reqType string, body map[string]any) (map[string]any, error) {
@@ -50,7 +56,7 @@ func (f *fakeProvider) Call(reqType string, body map[string]any) (map[string]any
 }
 
 func (f *fakeProvider) actions() []string {
-	actions := []string{fakeRead, fakeSave, fakeSend, fakeDial}
+	actions := []string{fakeRead, fakeSave, fakeSend, fakeDial, fakeFind}
 	if f.advertiseGhost {
 		actions = append(actions, "fake.ghost")
 	}
@@ -127,6 +133,13 @@ func (f *fakeProvider) capability() map[string]any {
 			"effects":      []any{map[string]any{"kind": KindExternal}},
 			"verification": "the dialler reports it",
 		},
+		map[string]any{
+			"name": fakeFind, "summary": "Find documents matching a query.",
+			"effects":            []any{map[string]any{"kind": KindRead}},
+			"arguments":          map[string]any{"query": "what to look for"},
+			"required_arguments": []any{"query"},
+			"verification":       "the matches are returned",
+		},
 	}}
 }
 
@@ -195,7 +208,25 @@ func (f *fakeProvider) invoke(body map[string]any) map[string]any {
 		}
 		return result(echoed, StatusRejected, CodeUnsupported)
 	}
-	if action != fakeDial { // every other action is targeted
+	if action == fakeFind {
+		if _, ok := asMap(body["arguments"])["query"]; !ok {
+			if f.proseRefusal {
+				// Terminal domain validation, which is the wrong side of the taxonomy: the
+				// host cannot repair what it is told is unfixable.
+				return result(echoed, StatusRejected, CodeInvalidArgument)
+			}
+			out := result(echoed, StatusRejected, CodeInvalidCall)
+			out["error"] = map[string]any{
+				"code": CodeInvalidCall, "message": "query is required",
+				"field_path": "/arguments/query",
+				"expected":   map[string]any{"kind": ExpectedType, "type": "string"},
+				"got":        "absent",
+			}
+			return out
+		}
+		return result(echoed, StatusCompleted, "")
+	}
+	if action != fakeDial && action != fakeFind { // every other action is targeted
 		ref := asMap(body["ref"])
 		if ref == nil {
 			return result(echoed, StatusRejected, CodePreconditionFailed)
@@ -240,7 +271,28 @@ var expectedOrder = []string{
 	"capability.describes", "manifest.version", "action.effects", "action.undo_claim",
 	"action.preview", "observe.bounded", "observe.references", "observe.addressable",
 	"invoke.unknown", "invoke.command_id", "invoke.replay", "cancel.honest",
-	"invoke.dry_run", "invoke.stale_reference",
+	"invoke.dry_run", "invoke.stale_reference", "invoke.required_arguments",
+}
+
+func TestProseInsteadOfAStructuredRefusalFails(t *testing.T) {
+	// invalid_argument is TERMINAL and invalid_call is REPAIRABLE, so prose tells the host to
+	// give up on the one failure it could have fixed by supplying what it left out.
+	report, err := RunCore(&fakeProvider{proseRefusal: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Passed {
+		t.Fatal("a prose refusal for a missing required argument passed")
+	}
+	found := false
+	for _, r := range report.Failures() {
+		if r.ID == "invoke.required_arguments" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("invoke.required_arguments did not fail: %+v", report.Failures())
+	}
 }
 
 func TestHonestProviderPassesEveryVector(t *testing.T) {
@@ -359,7 +411,7 @@ func TestWrongRefusalCodeFailsTheStaleVector(t *testing.T) {
 			if res.Passed {
 				t.Fatal("a non-reobservable refusal code must fail the stale vector")
 			}
-			if res.Detail != "rejected as invalid_argument, not stale_reference" {
+			if res.Detail != "a stale document reference was rejected as invalid_argument, not stale_reference" {
 				t.Fatalf("detail = %q", res.Detail)
 			}
 			return

@@ -39,7 +39,9 @@ cross-language integration test built that way is what caught this one.
 `verify` returned `verified: true` unconditionally. The one method that exists because
 a provider's claim of success cannot be trusted was a provider claiming success.
 
-**Rule:** if you cannot evaluate the expectation, return `false`.
+**Rule:** if you cannot evaluate the expectation, return `false`. This applies to
+every claimed state transition, including navigation, focus, selection, and
+activation — `view` is not a verification exemption.
 
 ## The actionable input that was silently shortened
 
@@ -58,8 +60,9 @@ can both offer `note.save`. The router picked one. It looked fine until the wron
 application acted.
 
 **Rule:** collisions are expected. The router returns `ambiguous`, and the caller
-answers with `ActionCall.provider`. Do not dodge this by prefixing your actions with
-your application name.
+answers with `ActionCall.provider` only when choosing among rival providers at equal
+assurance. Twin live bindings of one provider are resolved by binding context, not
+this field. Do not dodge collisions by prefixing actions with your application name.
 
 ## Object-literal lookup keyed by a caller's string
 
@@ -83,14 +86,17 @@ looks right.
 exists, the reference is positional and the assurance level is lower; say so rather
 than presenting it as a semantic action.
 
-## Identity that names the wrong machine
+## A binding that lost the machine
 
 An editor attached to a remote or a devcontainer will happily apply an edit to a
-right-looking path on the wrong filesystem. Provider identity has to capture the
-remote authority, not just the application.
+right-looking path on the wrong filesystem. The stable provider identity is
+deliberately the same integration on both machines; routing on that id alone loses
+which live attachment the user meant.
 
-**Rule:** identity includes *where*, and a provider that cannot establish where it is
-acting should refuse rather than guess.
+**Rule:** *where* belongs to the live binding and the host's authority context, not
+the provider id. Until the pending discriminator has a wire representation, the
+transport must retain the attachment it established. A binding that cannot establish
+where it is acting should refuse rather than guess.
 
 ## Building your own confirmation
 

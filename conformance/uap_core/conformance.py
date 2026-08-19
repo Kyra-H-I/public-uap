@@ -29,6 +29,7 @@ from uuid import uuid4
 
 from uap_core.cancel import CancelState
 from uap_core.effects import EffectKind, Reversibility
+from uap_core.errors import UapErrorCode
 from uap_core.manifest import (
     MAX_ACTIONS_PER_CAPABILITY,
     MAX_CAPABILITIES,
@@ -43,6 +44,7 @@ from uap_core.model import (
     Observation,
     ObservationQuery,
     ObservationScope,
+    ObservedObject,
 )
 from uap_core.provider import ProviderUnreachable, UapProvider
 from uap_core.references import EpochSet, Reference, ReferenceLifetime, check_reference
@@ -593,53 +595,239 @@ async def _vector_stale_reference_fails_closed(ctx: _Ctx) -> VectorResult:
     invokes a read-only action against it. Anything other than a refusal means the
     provider resolved "this object" to whatever is current — the failure mode that
     edits the wrong note.
+
+    **Once per LIFETIME, not once per run.** This vector used to probe ``scoped[0]`` — the
+    first object the observation happened to list — and grade the whole provider on it. Two
+    consequences, both verified by running it rather than reading it:
+
+    - The lifetime that matters most went unexercised. ``focus`` goes stale the instant the
+      caret moves, which is the failure the reference model exists to prevent, and it is the
+      lifetime least likely to be listed first. An untested FOCUS guard in this codebase
+      survived precisely because no vector was ever going to reach it.
+    - Worse, the *provider* chose which lifetime was graded, by its own observation order.
+      A suite whose whole purpose is catching the plausible-but-untrustworthy cannot let the
+      graded party pick the question.
+
+    This is the same weakening :func:`_vector_addressable_state` was already hardened
+    against — "per TARGET CLASS, not merely 'something was addressable'" — which this vector
+    still had. The probe action must also *target* the lifetime it is probing: aiming a
+    document-scoped action at a focus reference tests nothing, and invites a refusal about
+    the mismatch that would read as a staleness failure.
+
+    **The honest limit of this vector.** It grades the lifetime a provider PUBLISHES on its
+    reference. A provider that mislabels — hands back the caret under a ``document``
+    lifetime — is graded as a document and passes, and the host's own focus protections key
+    on ``ref.lifetime`` too, so it dodges those as well. That is not detectable from outside
+    the provider: nothing the host can see distinguishes a truthfully-labelled document
+    reference from a mislabelled caret. It is the same shape as the defect this vector was
+    just fixed for, one layer down — the graded party choosing the question, via the label
+    rather than the ordering — and it is called out here rather than left for someone to
+    discover, because a vector that quietly cannot see something is worse than one that says
+    so. Catching it needs evidence the wire does not carry today.
     """
+    # Only lifetimes some action can actually CONSUME. A provider may publish a session-scoped
+    # object while no action declares `target: session` — a stale reference of that lifetime can
+    # never be handed to anything, so there is no staleness to mishandle and demanding a probe
+    # for it would be a bar with no safety behind it. (The real editor publishes exactly this
+    # shape: document and focus are targeted, session is observable but actionable by nothing.)
+    actionable = {d.target for d in ctx.descriptors.values() if d.target is not None}
     scoped = [
         obj
         for obj in ctx.observation.objects
-        if obj.ref.lifetime is not ReferenceLifetime.PERSISTENT and obj.ref.basis
+        if obj.ref.lifetime is not ReferenceLifetime.PERSISTENT
+        and obj.ref.basis
+        and obj.ref.lifetime in actionable
     ]
     if not scoped:
         return VectorResult("invoke.stale_reference", True, "no scoped references", skipped=True)
 
-    target = scoped[0]
-    action, dry_run = _probe_action_for(ctx, target.actions)
-    if action is None:
+    # One representative per lifetime, in first-seen order so a report stays stable.
+    by_lifetime: dict[ReferenceLifetime, ObservedObject] = {}
+    for obj in scoped:
+        by_lifetime.setdefault(obj.ref.lifetime, obj)
+
+    unprobeable: list[str] = []
+    probed = 0
+    for lifetime, target in by_lifetime.items():
+        action, dry_run = _probe_action_for(ctx, target.actions, lifetime)
+        if action is None:
+            unprobeable.append(lifetime.value)
+            continue
+
+        probed += 1
+        stale_ref = replace(target.ref, basis=f"{target.ref.basis}~stale")
+        result = await ctx.provider.invoke(
+            ActionCall(action=action, command_id=uuid4().hex, ref=stale_ref, dry_run=dry_run)
+        )
+        if not result.changed_nothing:
+            return VectorResult(
+                "invoke.stale_reference",
+                False,
+                f"a stale {lifetime.value} reference returned {result.status.value}",
+            )
+        if result.error is None or not result.error.reobservable:
+            code = result.error.code.value if result.error else "none"
+            return VectorResult(
+                "invoke.stale_reference",
+                False,
+                f"a stale {lifetime.value} reference was rejected as {code}, not stale_reference",
+            )
+
+    if not probed:
+        # Unchanged from the single-object version: a provider whose staleness handling
+        # cannot be checked at all has not demonstrated it.
         return VectorResult(
             "invoke.stale_reference",
             False,
             "no action on an addressable object could be probed safely — a provider whose "
             "staleness handling cannot be checked has not demonstrated it",
         )
-
-    stale_ref = replace(target.ref, basis=f"{target.ref.basis}~stale")
-    result = await ctx.provider.invoke(
-        ActionCall(action=action, command_id=uuid4().hex, ref=stale_ref, dry_run=dry_run)
-    )
-    if not result.changed_nothing:
+    if unprobeable:
+        # Some lifetimes held up, others could not be reached without writing. A pass would
+        # claim more than was tested, and a failure would assert a defect nobody has seen —
+        # so this is the CORE skip that withholds level A and names the gap, exactly as
+        # `observe.addressable` reports a target class it could not reach.
         return VectorResult(
-            "invoke.stale_reference", False, f"stale reference returned {result.status.value}"
-        )
-    if result.error is None or not result.error.reobservable:
-        code = result.error.code.value if result.error else "none"
-        return VectorResult(
-            "invoke.stale_reference", False, f"rejected as {code}, not stale_reference"
+            "invoke.stale_reference",
+            True,
+            f"verified for {probed} lifetime(s), but no side-effect-free action targets "
+            f"{', '.join(sorted(unprobeable))} — staleness there is unproven",
+            skipped=True,
         )
     return VectorResult("invoke.stale_reference", True)
 
 
-def _read_only_action_for(ctx: _Ctx, available: tuple[str, ...]) -> str | None:
-    """Pick an action on this object that provably changes nothing, or None."""
+async def _vector_required_arguments_refused_structurally(ctx: _Ctx) -> VectorResult:
+    """A declared required argument, omitted, must come back REPAIRABLE — never guessed at.
+
+    This is the vector behind "a dialog is not a protocol primitive". An application collects
+    a missing parameter by popping a modal; a provider cannot, because there is no user in
+    front of it. The two wrong answers are equally bad: opening a dialog strands the call on a
+    box nobody will ever click, and inventing a default writes something the user never named.
+    The right answer is to hand the gap back to the host, which *does* have a user.
+
+    So the refusal has to be ``invalid_call`` with ``field_path`` naming the argument, not
+    prose. ``invalid_call`` is the only code in ``REPAIRABLE``; ``invalid_argument`` is
+    ``TERMINAL``. A provider that says "name is required" in a sentence has told the host the
+    call is unfixable — about the one failure the host can fix without asking anyone.
+
+    Probed with a read-only action for the reason spelled out in :func:`_probe_action_for`.
+    It is tempting to argue that omitting a required argument is self-limiting — that the
+    value directing the effect is exactly the one missing, so nothing can go outward — and for
+    a dial with no number that holds. It breaks on a send that is missing only a required
+    subject: recipient present, and a provider that ignores the gap sends real mail.
+
+    The three outcomes are deliberately distinct, and this vector is NOT conditional:
+
+    - *No action declares a required argument.* A **pass**. The obligation is conditional and
+      every descriptor was read, so this is complete evidence that it has no instances — not
+      the absence of evidence a skip means. Declaring none is a legitimate design.
+    - *Only mutating actions declare one.* A **skip**, and a core one, so it withholds level A
+      while naming what went unproven. The provider has done nothing wrong; the suite simply
+      cannot look without writing, and saying "failed" would assert a defect that is not there.
+    - *A read-only action declares one.* Graded.
+    """
+    requiring = {name: d for name, d in ctx.descriptors.items() if d.required_arguments}
+    if not requiring:
+        # Spelled out because a PASS line in a published report is a claim adopters cite. This
+        # one must not be quotable as "our refusal convention was verified" — nothing was.
+        return VectorResult(
+            "invoke.required_arguments",
+            True,
+            "no action declares a required argument, so no missing-argument refusal was "
+            "exercised — this passes vacuously and is not evidence of the convention",
+        )
+
+    probeable = [
+        d
+        for d in requiring.values()
+        if d.effects and all(e.kind is EffectKind.READ for e in d.effects)
+    ]
+    # A targeted action needs a reference of ITS lifetime, or the provider answers the missing
+    # target first and the vector grades the wrong refusal.
+    chosen: ActionDescriptor | None = None
+    ref: Reference | None = None
+    for descriptor in probeable:
+        if descriptor.target is None:
+            chosen, ref = descriptor, None
+            break
+        match = _ref_of_lifetime(ctx, descriptor.target)
+        if match is not None:
+            chosen, ref = descriptor, match
+            break
+
+    if chosen is None:
+        return VectorResult(
+            "invoke.required_arguments",
+            True,
+            "required arguments are declared only where omitting one could not be probed "
+            f"without changing something or addressing nothing: {', '.join(sorted(requiring))}",
+            skipped=True,
+        )
+
+    # Every argument omitted, so a provider requiring several may name whichever it checks
+    # first. Naming ONE is the contract; naming which one is the provider's business.
+    result = await ctx.provider.invoke(
+        ActionCall(action=chosen.name, command_id=uuid4().hex, ref=ref)
+    )
+    if not result.changed_nothing:
+        return VectorResult(
+            "invoke.required_arguments",
+            False,
+            f"{chosen.name} returned {result.status.value} with {chosen.required_arguments[0]!r} "
+            "omitted — a missing required argument must never execute",
+        )
+    if result.error is None or result.error.code is not UapErrorCode.INVALID_CALL:
+        code = result.error.code.value if result.error else "none"
+        return VectorResult(
+            "invoke.required_arguments",
+            False,
+            f"{chosen.name} refused a missing required argument as {code}, not invalid_call — "
+            "the host cannot repair a refusal it has to read",
+        )
+    wanted = {f"/arguments/{name}" for name in chosen.required_arguments}
+    if result.error.field_path not in wanted:
+        return VectorResult(
+            "invoke.required_arguments",
+            False,
+            f"{chosen.name} refused with field_path {result.error.field_path!r}, "
+            f"which names no declared required argument of {chosen.name}",
+        )
+    return VectorResult("invoke.required_arguments", True)
+
+
+def _ref_of_lifetime(ctx: _Ctx, lifetime: ReferenceLifetime) -> Reference | None:
+    """A live reference of exactly this lifetime, or None."""
+    for obj in ctx.observation.objects:
+        if obj.ref.lifetime is lifetime and obj.ref.basis:
+            return obj.ref
+    return None
+
+
+def _read_only_action_for(
+    ctx: _Ctx, available: tuple[str, ...], lifetime: ReferenceLifetime | None = None
+) -> str | None:
+    """Pick an action on this object that provably changes nothing, or None.
+
+    ``lifetime``, when given, additionally requires the action to TARGET that lifetime.
+    Without it a document-scoped action can be aimed at a focus reference: the call tests
+    nothing about focus staleness, and a provider that refuses the mismatch outright looks
+    like it mishandled a stale reference.
+    """
     for name in available:
         descriptor = ctx.descriptors.get(name)
         if descriptor is None or descriptor.target is None:
+            continue
+        if lifetime is not None and descriptor.target is not lifetime:
             continue
         if all(e.kind is EffectKind.READ for e in descriptor.effects):
             return name
     return None
 
 
-def _probe_action_for(ctx: _Ctx, available: tuple[str, ...]) -> tuple[str | None, bool]:
+def _probe_action_for(
+    ctx: _Ctx, available: tuple[str, ...], lifetime: ReferenceLifetime | None = None
+) -> tuple[str | None, bool]:
     """An action safe to probe staleness with. Read-only, or nothing.
 
     This module's opening promise — and the published bundle's, which is the one that matters,
@@ -659,7 +847,7 @@ def _probe_action_for(ctx: _Ctx, available: tuple[str, ...]) -> tuple[str | None
     The second return value is retained at ``False`` so the call shape stays explicit about never
     asking for a preview.
     """
-    return _read_only_action_for(ctx, available), False
+    return _read_only_action_for(ctx, available, lifetime), False
 
 
 _SYNC_VECTORS: tuple[Callable[[_Ctx], VectorResult], ...] = (
@@ -679,4 +867,5 @@ _ASYNC_VECTORS: tuple[Callable[[_Ctx], Awaitable[VectorResult]], ...] = (
     _vector_cancel_is_answered_honestly,
     _vector_dry_run_never_executes,
     _vector_stale_reference_fails_closed,
+    _vector_required_arguments_refused_structurally,
 )
