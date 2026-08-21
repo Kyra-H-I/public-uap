@@ -42,7 +42,7 @@ method, idempotency, and whether it is the undo of another action.
 If you cannot state an action's effects and how to verify it, you do not yet
 understand the operation well enough to expose it. That is a signal to go read the
 application's API documentation, not to write a handler and fill the descriptor in
-afterwards.
+afterwards. Write each one as a claim rather than an explanation — rule 17.
 
 ## The rules
 
@@ -80,7 +80,13 @@ is the failure mode this vocabulary exists to make impossible.
 **7. Two staleness mechanisms, never merged.** `stale_reference` means *re-resolve
 what "this" meant*. `conflict` means *right target, someone else got there first*.
 They have different recoveries, and collapsing them makes the host retry the wrong
-thing.
+thing. If you are arriving from HTTP, read the codes twice: this taxonomy follows
+gRPC's status codes, so `conflict` is the failed revision check (gRPC `ABORTED`) and
+`precondition_failed` is gRPC's `FAILED_PRECONDITION`, the state guard — *not* HTTP's
+412, which is the `If-Match` answer (RFC 9110 §15.5.13). The names collide; the
+meanings do not. `conflict` is also deliberately excluded from automatic retry, because
+in an interactive application the other writer is usually a person and winning the race
+is the wrong outcome.
 
 **8. Do not claim a feature you do not back.** `ProviderFeatures.preview` and
 `cancellation` are promises the suite checks live; `transactions` and
@@ -160,12 +166,67 @@ Emit it only when non-empty; a name in it that you never declared in `arguments`
 a malformed descriptor, because it tells the host two different things about your own
 call shape.
 
+**17. Write the descriptor as a test, not a manual.** A capability `title` is a
+`describe(...)`; an action `summary` is an `it(...)`. Make both **falsifiable claims
+from the caller's point of view** — present tense, one sentence, no mechanism. The name
+*is* the assertion, which is what lets a reader check it instead of believing it, and a
+claim is shorter than an explanation, so this costs nothing (rule 12's economics apply
+to descriptors: every byte is read by a model on the turn it chooses).
+
+The rest of the descriptor is already Given / When / Then — behaviour-driven
+development's scenario grammar (Dan North, 2006), which every reader and every model
+has seen: `preconditions` is the Given, the action name plus `arguments` is the When,
+`verification` is the Then. Two differences from a test matter, and both are why
+authors get it wrong:
+
+- **Your Given is a guard, not a fixture.** Nobody arranges it for you; you check it
+  and refuse with `precondition_failed`.
+- **The Then is split in two.** What *changed* goes in `effects` (rule 1, read by the
+  host's policy engine); how you would *know* goes in `verification` (rule 11, read by
+  the checker). Neither belongs in the summary as an aside.
+
+```text
+✗ summary: "Uses the workspace edit API to apply a text insertion at the position
+            of the primary cursor, if a document is currently open."
+✓ summary: "Types text at the cursor and hands back a way to take it back."
+  preconditions: ("a document is open", "the editor has focus")
+  verification:  "re-read the document; its revision is greater than the one passed in"
+```
+
+```text
+✗ summary: "Confirms an order. May fail if the order is not a draft, and depending
+            on configuration this can also email the customer."
+✓ summary: "Confirms a draft order and reserves its stock."
+  preconditions: ("the order is in draft",)
+  effects:       persist(order), external(customer email)   ← the "can also email"
+  verification:  "re-read the order; its state is confirmed"
+```
+
+Everything the bad summary hedges is a declaration that belongs somewhere the host can
+act on it: the state guard is a precondition you enforce, and the email is an effect
+that decides whether the user is asked first. Left in prose, it is decoration.
+
+```text
+✗ verification: "the call returns success"
+✓ verification: "re-read the note; its revision is greater than the one passed in"
+```
+
+A provider self-reporting success proves nothing (rule 11), and a Then that restates
+the When is not an assertion.
+
+This is a **convention, not a schema**. No field is added and nothing parses it; it is
+checked by review and reported beside first-call correctness. Its payoff is that a
+claim plus a stated verification is enough to *draft* a conformance vector from your
+declaration — which is also the fastest way to find out that a summary you wrote is not
+actually checkable.
+
 ## Then run the suite
 
 Non-negotiable final step. It is safe — reads and refusals only:
 
 ```python
 from uap_core.conformance import run_core_conformance
+
 report = await run_core_conformance(provider)
 assert report.passed, [r.to_dict() for r in report.failures]
 ```
@@ -187,7 +248,7 @@ Three qualifications, each load-bearing:
 - **Green is pre-flight, not the grade.** A host runs its own suite against your
   provider and assigns the assurance level from that report plus runtime evidence.
   A level is never self-awarded.
-- **Green is not done.** Rules 2, 5, 11 and 13 have no core vector — nothing
+- **Green is not done.** Rules 2, 5, 11, 13 and 17 have no core vector — nothing
   mechanical fails when you break them. They are checked by review.
 
 Details of all fifteen vectors: `references/conformance.md`.
