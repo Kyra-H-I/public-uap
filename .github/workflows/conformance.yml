@@ -17,8 +17,8 @@ jobs:
   suite:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Install the conformance package
@@ -29,11 +29,17 @@ jobs:
   wire-runner:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version: "1.23"
-      - uses: actions/setup-python@v5
+          # uap-conform depends on nothing outside the standard library, so it has
+          # no go.sum — and setup-go's default cache looks for one at the repository
+          # root, warning "Dependencies file is not found" on every run. There is no
+          # module cache to restore, so ask for none rather than pointing the cache at
+          # a file that does not exist.
+          cache: false
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Vet, test, and build uap-conform
